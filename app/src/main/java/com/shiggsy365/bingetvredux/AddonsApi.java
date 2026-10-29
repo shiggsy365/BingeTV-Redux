@@ -48,6 +48,9 @@ final class AddonsApi {
                 return list();
             case "/api/addons/refresh":
                 return refresh(body.optString("key", ""));
+            case "/api/debug/stremio":
+                if (!BuildConfig.DEBUG) return null;
+                return debug(params.get("type"), params.get("id"));
             default:
                 return null;
         }
@@ -65,7 +68,7 @@ final class AddonsApi {
 
     private JSONObject add(String url) throws JSONException {
         try {
-            StremioClient.Fetched fetched = Stremio.client().fetchManifest(url);
+            StremioClient.Fetched fetched = Stremio.client(mContext).fetchManifest(url);
             if (fetched.manifest.configurationRequired) {
                 throw new IllegalArgumentException(fetched.manifest.name + " needs configuring "
                         + "first. Open its configure page, then paste the URL it gives you.");
@@ -83,7 +86,7 @@ final class AddonsApi {
             if (body.has("enabled")) store().setEnabled(key, body.getBoolean("enabled"));
             if (body.has("move")) store().move(key, body.getInt("move"));
             if (!body.optString("url").isEmpty()) {
-                StremioClient.Fetched fetched = Stremio.client().fetchManifest(body.getString("url"));
+                StremioClient.Fetched fetched = Stremio.client(mContext).fetchManifest(body.getString("url"));
                 store().replaceUrl(key, fetched.transportUrl, fetched.manifest,
                         System.currentTimeMillis());
             }
@@ -102,7 +105,7 @@ final class AddonsApi {
         try {
             List<Future<Manifest>> results = new ArrayList<>();
             for (AddonStore.Addon a : addons) {
-                results.add(pool.submit(() -> Stremio.client().fetchManifest(a.transportUrl).manifest));
+                results.add(pool.submit(() -> Stremio.client(mContext).fetchManifest(a.transportUrl).manifest));
             }
             JSONArray failed = new JSONArray();
             for (int i = 0; i < addons.size(); i++) {
@@ -119,6 +122,43 @@ final class AddonsApi {
         } finally {
             pool.shutdownNow();
         }
+    }
+
+    /** Debug builds: what the addons give for a title, to check the client against them. */
+    private JSONObject debug(String type, String id) throws Exception {
+        StremioClient client = Stremio.client(mContext);
+        JSONObject out = new JSONObject();
+        long t0 = System.currentTimeMillis();
+        com.shiggsy365.bingetvredux.stremio.Metas.Found found =
+                com.shiggsy365.bingetvredux.stremio.Metas.fetch(client, store(), type, id);
+        out.put("meta", found.meta.name + " (" + found.meta.year() + ") from " + found.addonName)
+                .put("seasons", new JSONArray(found.meta.seasons()))
+                .put("videos", found.meta.videos.size())
+                .put("cast", found.meta.people(com.shiggsy365.bingetvredux.stremio.MetaItem.CAST).size())
+                .put("metaMs", System.currentTimeMillis() - t0);
+        String videoId = found.meta.hasSeasons() && !found.meta.videos.isEmpty()
+                ? found.meta.episodes(found.meta.seasons().get(0)).get(0).id : id;
+        t0 = System.currentTimeMillis();
+        com.shiggsy365.bingetvredux.stremio.Streams.Found streams =
+                com.shiggsy365.bingetvredux.stremio.Streams.fetch(client, store(), type, videoId);
+        List<com.shiggsy365.bingetvredux.stremio.Stream> ready =
+                com.shiggsy365.bingetvredux.stremio.Streams.prepare(streams.streams,
+                        new com.shiggsy365.bingetvredux.stremio.Streams.Prefs());
+        JSONArray top = new JSONArray();
+        for (int i = 0; i < Math.min(5, ready.size()); i++) {
+            top.put(ready.get(i).addon + ": " + String.join(" · ",
+                    com.shiggsy365.bingetvredux.stremio.Streams.tags(ready.get(i))));
+        }
+        out.put("videoId", videoId).put("streams", streams.streams.size())
+                .put("playable", ready.size()).put("top", top)
+                .put("streamErrors", new JSONArray(streams.errors))
+                .put("streamsMs", System.currentTimeMillis() - t0);
+        t0 = System.currentTimeMillis();
+        out.put("subtitles", com.shiggsy365.bingetvredux.stremio.Subtitles.fetch(client, store(),
+                type, videoId, ready.isEmpty() ? null : ready.get(0),
+                java.util.Collections.singletonList("eng")).size())
+                .put("subtitlesMs", System.currentTimeMillis() - t0);
+        return out;
     }
 
     private static JSONObject addonJson(AddonStore.Addon a) throws JSONException {

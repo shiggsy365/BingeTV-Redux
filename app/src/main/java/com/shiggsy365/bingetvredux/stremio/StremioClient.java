@@ -21,13 +21,20 @@ public class StremioClient {
     private static final int MAX_BYTES = 32 * 1024 * 1024;
 
     private final int mTimeoutMs;
+    private final ResponseCache mCache;
 
     public StremioClient() {
-        this(DEFAULT_TIMEOUT_MS);
+        this(DEFAULT_TIMEOUT_MS, null);
     }
 
-    public StremioClient(int timeoutMs) {
+    /** {@code cache} may be null: nothing is then cached. */
+    public StremioClient(int timeoutMs, ResponseCache cache) {
         mTimeoutMs = timeoutMs;
+        mCache = cache;
+    }
+
+    public ResponseCache cache() {
+        return mCache;
     }
 
     /** A manifest and the transport URL it was fetched from. */
@@ -48,7 +55,36 @@ public class StremioClient {
 
     public JSONObject resource(String transportUrl, String resource, String type, String id,
             List<Map.Entry<String, String>> extra) throws StremioException {
-        return getJson(StremioUrls.resourceUrl(transportUrl, resource, type, id, extra));
+        return resource(transportUrl, resource, type, id, extra, 0);
+    }
+
+    /**
+     * A resource, from the cache while it's younger than {@code ttlMs} (0: always asks the
+     * addon). If the addon can't be reached, an expired cached answer is used instead.
+     */
+    public JSONObject resource(String transportUrl, String resource, String type, String id,
+            List<Map.Entry<String, String>> extra, long ttlMs) throws StremioException {
+        String url = StremioUrls.resourceUrl(transportUrl, resource, type, id, extra);
+        if (mCache == null || ttlMs <= 0) return getJson(url);
+        long now = System.currentTimeMillis();
+        ResponseCache.Hit hit = mCache.get(url, now);
+        if (hit != null && hit.fresh) return hit.data;
+        try {
+            JSONObject data = getJson(url);
+            mCache.put(url, data, now + ttlMs);
+            return data;
+        } catch (StremioException e) {
+            if (hit != null) return hit.data;
+            throw e;
+        }
+    }
+
+    /** A cached answer, fresh or not, without asking the addon; null if there's none. */
+    public ResponseCache.Hit peek(String transportUrl, String resource, String type, String id,
+            List<Map.Entry<String, String>> extra) {
+        if (mCache == null) return null;
+        return mCache.get(StremioUrls.resourceUrl(transportUrl, resource, type, id, extra),
+                System.currentTimeMillis());
     }
 
     public JSONObject getJson(String url) throws StremioException {
