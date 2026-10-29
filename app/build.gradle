@@ -1,0 +1,59 @@
+apply plugin: 'com.android.application'
+
+// Release signing: keystore.properties in the project root locally (storeFile, keyAlias,
+// storePassword), or REDUX_KEYSTORE_FILE / REDUX_KEY_PASSWORD in CI. Without either, release
+// builds are signed with the debug key.
+def signingProps = new Properties()
+def signingFile = rootProject.file('keystore.properties')
+if (signingFile.exists()) signingFile.withInputStream { signingProps.load(it) }
+def releaseStore = signingProps.getProperty('storeFile') ?: System.getenv('REDUX_KEYSTORE_FILE')
+def releasePassword = signingProps.getProperty('storePassword') ?: System.getenv('REDUX_KEY_PASSWORD')
+
+android {
+    namespace 'com.shiggsy365.bingetvredux'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.shiggsy365.bingetvredux"
+        minSdkVersion 22
+        targetSdkVersion 34
+        versionCode 1
+        versionName "0.1.0"
+    }
+
+    signingConfigs {
+        if (releaseStore && releasePassword) {
+            release {
+                storeFile file(releaseStore)
+                storePassword releasePassword
+                keyAlias signingProps.getProperty('keyAlias') ?: 'bingetvredux'
+                keyPassword releasePassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.findByName('release') ?: signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+}
+
+dependencies {
+    implementation 'androidx.leanback:leanback:1.2.0'
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    implementation 'androidx.work:work-runtime:2.10.5'
+    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.22')
+    implementation 'com.amazon.android:exoplayer:2.18.2'
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'
+}

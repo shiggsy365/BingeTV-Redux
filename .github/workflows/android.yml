@@ -1,0 +1,42 @@
+name: Android
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.REDUX_KEYSTORE }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "REDUX_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          else
+            echo "No REDUX_KEYSTORE secret: the release APK is signed with the debug key"
+          fi
+      - name: Build
+        env:
+          REDUX_KEY_PASSWORD: ${{ secrets.REDUX_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon testDebugUnitTest assembleRelease
+      - name: Name the APK
+        run: |
+          version=$(sed -n 's/.*versionName "\(.*\)"/\1/p' app/build.gradle)
+          mkdir -p out
+          cp app/build/outputs/apk/release/app-release.apk "out/BingeTV-Redux-$version.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: out/*.apk

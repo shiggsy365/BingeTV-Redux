@@ -1,0 +1,15 @@
+.gradle
+local.properties
+.idea/
+.DS_Store
+**/build/
+captures/
+manifest-merger-release-report.txt
+*~
+*.iml
+*#
+pseudoLocalizer.log
+# Release signing: kept outside the repo (CI uses repository secrets)
+keystore.properties
+*.jks
+*.keystore
