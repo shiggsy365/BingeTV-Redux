@@ -6,6 +6,7 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -13,7 +14,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -483,9 +483,56 @@ public final class WatchStore {
         return s == null ? "" : s;
     }
 
-    /** For backups: every row as JSON. */
-    public synchronized Map<String, Row> snapshot() {
-        return new LinkedHashMap<>(mRows);
+    /** For backups: a profile's rows. */
+    static JSONArray export(Context context, String profileId) throws JSONException {
+        WatchStore store = profileId.equals(Profiles.current(context).id) ? get(context)
+                : new WatchStore(context, profileId);
+        JSONArray out = new JSONArray();
+        synchronized (store) {
+            for (Row r : store.mRows.values()) {
+                WatchStore.Entry e = r.entry;
+                out.put(new JSONObject().put("videoId", e.videoId).put("type", e.type)
+                        .put("metaId", e.metaId).put("season", e.season).put("episode", e.episode)
+                        .put("title", e.title).put("name", e.name).put("poster", e.poster)
+                        .put("background", e.background).put("logo", e.logo)
+                        .put("bingeGroup", e.bingeGroup).put("ids", e.ids)
+                        .put("position", r.positionMs).put("duration", r.durationMs)
+                        .put("watched", r.watched).put("watchedAt", r.watchedAt)
+                        .put("updatedAt", r.updatedAt).put("synced", r.synced));
+            }
+        }
+        if (store != sInstance) store.mHelper.close();
+        return out;
+    }
+
+    /** From a backup: replaces a profile's rows. */
+    static void restore(Context context, String profileId, JSONArray rows) throws JSONException {
+        reset();
+        context.deleteDatabase(dbName(profileId));
+        WatchStore store = new WatchStore(context, profileId);
+        SQLiteDatabase db = store.mHelper.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            for (int i = 0; i < rows.length(); i++) {
+                JSONObject o = rows.getJSONObject(i);
+                Row r = new Row();
+                r.entry = new Entry(o.getString("videoId"), o.optString("type"), o.optString("metaId"),
+                        o.optInt("season", -1), o.optInt("episode", -1), o.optString("title"),
+                        o.optString("name"), o.optString("poster"), o.optString("background"),
+                        o.optString("logo"), o.optString("bingeGroup"), o.optJSONObject("ids"));
+                r.positionMs = o.optLong("position");
+                r.durationMs = o.optLong("duration");
+                r.watched = o.optBoolean("watched");
+                r.watchedAt = o.optLong("watchedAt");
+                r.updatedAt = o.optLong("updatedAt");
+                r.synced = o.optBoolean("synced");
+                store.write(r);
+            }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+            store.mHelper.close();
+        }
     }
 
     private static final class Helper extends SQLiteOpenHelper {

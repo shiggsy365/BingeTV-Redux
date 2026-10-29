@@ -103,6 +103,38 @@ public final class Profiles {
         }
     }
 
+    /** For backups: the profiles, their settings and watch history. */
+    static JSONObject export(Context context) throws JSONException {
+        JSONArray list = new JSONArray();
+        for (Profile p : all(context)) {
+            list.put(new JSONObject().put("id", p.id).put("name", p.name)
+                    .put("settings", Settings.toJson(context, p.id))
+                    .put("watch", WatchStore.export(context, p.id)));
+        }
+        return new JSONObject().put("profiles", list).put("current", current(context).id);
+    }
+
+    /** From a backup: replaces every profile. */
+    static synchronized void restore(Context context, JSONObject data) throws JSONException {
+        JSONArray list = data.getJSONArray("profiles");
+        List<Profile> profiles = new ArrayList<>();
+        for (Profile old : all(context)) {
+            WatchStore.delete(context, old.id);
+            context.deleteSharedPreferences(Settings.prefsName(old.id));
+        }
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject p = list.getJSONObject(i);
+            String id = p.getString("id");
+            profiles.add(new Profile(id, p.getString("name")));
+            JSONObject settings = p.optJSONObject("settings");
+            if (settings != null) Settings.apply(context, id, settings);
+            JSONArray watch = p.optJSONArray("watch");
+            if (watch != null) WatchStore.restore(context, id, watch);
+        }
+        save(context, profiles);
+        setCurrent(context, data.optString("current", profiles.get(0).id));
+    }
+
     private static void save(Context context, List<Profile> list) {
         JSONArray out = new JSONArray();
         try {

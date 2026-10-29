@@ -1006,6 +1006,15 @@ public class WebServer extends NanoHTTPD {
             // without them the addons can't be restored.
             putEntry(zip, "addons.json", Stremio.addons(mContext).toJson().toString(2)
                     .getBytes(StandardCharsets.UTF_8));
+            JSONObject profiles = Profiles.export(mContext);
+            if (!includePassword) {
+                // Without passwords, the MDBList keys stay behind too.
+                JSONArray list = profiles.getJSONArray("profiles");
+                for (int i = 0; i < list.length(); i++) {
+                    list.getJSONObject(i).getJSONObject("settings").remove(Settings.MDBLIST_KEY);
+                }
+            }
+            putEntry(zip, "profiles.json", profiles.toString().getBytes(StandardCharsets.UTF_8));
             JSONObject configJson = new JSONObject(config.toJson().toString());
             if (!includePassword) {
                 JSONArray sources = configJson.optJSONArray("sources");
@@ -1056,6 +1065,7 @@ public class WebServer extends NanoHTTPD {
         JSONObject settings = null;
         JSONObject config = null;
         JSONObject addons = null;
+        JSONObject profiles = null;
         Map<String, byte[]> logos = new HashMap<>();
         Map<String, byte[]> guides = new HashMap<>();
         try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(
@@ -1068,6 +1078,8 @@ public class WebServer extends NanoHTTPD {
                     manifest = new JSONObject(new String(content, StandardCharsets.UTF_8));
                 } else if ("settings.json".equals(name)) {
                     settings = new JSONObject(new String(content, StandardCharsets.UTF_8));
+                } else if ("profiles.json".equals(name)) {
+                    profiles = new JSONObject(new String(content, StandardCharsets.UTF_8));
                 } else if ("addons.json".equals(name)) {
                     addons = new JSONObject(new String(content, StandardCharsets.UTF_8));
                 } else if ("config.json".equals(name)) {
@@ -1112,6 +1124,7 @@ public class WebServer extends NanoHTTPD {
         ChannelConfig.replace(mContext, config);
         // FyrTuner's backups have no addons: the ones here stay.
         if (addons != null) Stremio.addons(mContext).replace(addons);
+        if (profiles != null) Profiles.restore(mContext, profiles);
 
         File logoDir = new File(mContext.getFilesDir(), "logos");
         File[] oldLogos = logoDir.listFiles();

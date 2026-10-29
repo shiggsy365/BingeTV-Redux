@@ -15,7 +15,7 @@ import java.util.zip.GZIPInputStream;
 
 /** Talks to Stremio addons over HTTP. Safe to share between threads. */
 public class StremioClient {
-    public static final String USER_AGENT = "BingeTVRedux/0.1";
+    public static final String USER_AGENT = "BingeTVRedux/1.0";
     private static final int DEFAULT_TIMEOUT_MS = 15_000;
     // Long-running shows' meta can be several MB; anything far bigger isn't an addon answer.
     private static final int MAX_BYTES = 32 * 1024 * 1024;

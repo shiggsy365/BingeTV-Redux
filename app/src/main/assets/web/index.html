@@ -324,11 +324,13 @@
 
     <div class="panel" style="margin-top:16px">
       <h2>Backup &amp; restore</h2>
-      <p class="muted">A backup holds the Xtream account, groups, channel order and edits, guide
-        links and sources, name clean-up lists and uploaded logos. Restore it here or on a new
-        device running BingeTV Redux.</p>
-      <label class="row"><input type="checkbox" id="backupPassword" checked> Include the Xtream
-        password (anyone with the file can then use your account)</label>
+      <p class="muted">A backup holds everything set up here: your addons and catalogs, profiles
+        with their settings and watch history, the Xtream accounts, groups, channel edits, guides
+        and logos. Restore it here or on another device running BingeTV Redux. A FyrTuner backup
+        restores its live TV settings and leaves the rest as it is.</p>
+      <label class="row"><input type="checkbox" id="backupPassword" checked> Include passwords and
+        keys: Xtream passwords and MDBList keys (anyone with the file can use them). Addon URLs
+        are always included.</label>
       <div class="row" style="margin-top:10px">
         <button class="btn primary" id="downloadBackup">Download backup</button>
       </div>
@@ -1220,7 +1222,7 @@ $('downloadBackup').onclick = () => {
 $('restoreBackup').onclick = () => run(async () => {
   const file = $('restoreFile').files[0];
   if (!file) { toast('Choose a backup file first'); return; }
-  if (!confirm('Restoring replaces the account, groups, channel edits, guides and logos on this device, then syncs. Continue?')) return;
+  if (!confirm('Restoring replaces what\'s set up on this device (addons, profiles, accounts, channels, guides and logos), then syncs. Continue?')) return;
   const btn = $('restoreBackup'); btn.disabled = true; btn.textContent = 'Restoring…';
   try {
     const res = await fetch('/api/restore', {method: 'POST',
