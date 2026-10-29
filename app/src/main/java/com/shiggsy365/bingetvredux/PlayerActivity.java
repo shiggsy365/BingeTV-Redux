@@ -23,15 +23,13 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.google.android.exoplayer2.C;
-import com.google.android.exoplayer2.ExoPlayer;
-import com.google.android.exoplayer2.MediaItem;
-import com.google.android.exoplayer2.PlaybackException;
-import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.source.DefaultMediaSourceFactory;
-import com.google.android.exoplayer2.trackselection.TrackSelectionParameters;
-import com.google.android.exoplayer2.ui.StyledPlayerView;
-import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
+import androidx.media3.common.C;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.common.TrackSelectionParameters;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.ui.PlayerView;
 
 import org.json.JSONArray;
 
@@ -81,7 +79,7 @@ public class PlayerActivity extends Activity {
     // Recordings stop this far short of now; the panel is still writing the rest.
     private static final long LIVE_EDGE_MS = 60_000;
 
-    private StyledPlayerView mPlayerView;
+    private PlayerView mPlayerView;
     private ProgressBar mBuffering;
     private View mOverlay;
     private ImageView mOverlayLogo;
@@ -363,12 +361,7 @@ public class PlayerActivity extends Activity {
         mLastPosition = -1;
         mLastProgressMs = mStreamStartMs;
 
-        // Panels often redirect streams to an edge server, sometimes across http/https.
-        DefaultHttpDataSource.Factory dataSourceFactory = new DefaultHttpDataSource.Factory()
-                .setAllowCrossProtocolRedirects(true);
-        mPlayer = new ExoPlayer.Builder(this)
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory))
-                .build();
+        mPlayer = Players.build(this);
         applySubtitles();
         mPlayerView.setPlayer(mPlayer);
         mPlayer.addListener(new Player.Listener() {

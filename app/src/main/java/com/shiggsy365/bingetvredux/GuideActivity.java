@@ -25,12 +25,10 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.exoplayer2.ExoPlayer;
-import com.google.android.exoplayer2.MediaItem;
-import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.source.DefaultMediaSourceFactory;
-import com.google.android.exoplayer2.ui.StyledPlayerView;
-import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.Player;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.ui.PlayerView;
 
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -76,7 +74,7 @@ public class GuideActivity extends Activity {
     private TextView mHeroTitle;
     private TextView mHeroTime;
     private TextView mHeroDescription;
-    private StyledPlayerView mPreview;
+    private PlayerView mPreview;
     private ImageView mPreviewLogo;
 
     private final RowAdapter mAdapter = new RowAdapter();
@@ -533,11 +531,7 @@ public class GuideActivity extends Activity {
         if (url == null) return;
         stopPreview();
         mPreviewChannelId = channel.id;
-        DefaultHttpDataSource.Factory dataSourceFactory = new DefaultHttpDataSource.Factory()
-                .setAllowCrossProtocolRedirects(true);
-        mPreviewPlayer = new ExoPlayer.Builder(this)
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory))
-                .build();
+        mPreviewPlayer = Players.build(this);
         mPreview.setPlayer(mPreviewPlayer);
         mPreviewPlayer.addListener(new Player.Listener() {
             @Override

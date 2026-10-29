@@ -11,14 +11,16 @@ def releasePassword = signingProps.getProperty('storePassword') ?: System.getenv
 
 android {
     namespace 'com.shiggsy365.bingetvredux'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.shiggsy365.bingetvredux"
-        minSdkVersion 22
+        minSdkVersion 23
         targetSdkVersion 34
         versionCode 1
         versionName "0.1.0"
+        // Fire TV and Android TV devices are ARM; FFmpeg's libraries are large per ABI.
+        ndk { abiFilters 'armeabi-v7a', 'arm64-v8a' }
     }
 
     signingConfigs {
@@ -53,7 +55,10 @@ dependencies {
     implementation 'androidx.leanback:leanback:1.2.0'
     implementation 'androidx.recyclerview:recyclerview:1.3.2'
     implementation 'androidx.work:work-runtime:2.10.5'
-    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.22')
-    implementation 'com.amazon.android:exoplayer:2.18.2'
+    implementation 'androidx.media3:media3-exoplayer:1.11.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.11.1'
+    implementation 'androidx.media3:media3-ui:1.11.1'
+    // FFmpeg audio decoders (DTS, TrueHD and others the device can't decode itself).
+    implementation 'io.github.anilbeesetti:nextlib-media3ext:1.11.1-0.16.0'
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
 }
