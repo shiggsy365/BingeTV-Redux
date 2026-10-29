@@ -28,7 +28,10 @@ import fi.iki.elonen.NanoHTTPD;
  * Serves the channel manager page (assets/web/index.html) and its JSON API on the local
  * network. The Xtream password is never sent to the browser; the page can only replace it.
  *
+ * Every API call but /api/pair needs a paired browser's cookie (see WebAuth).
+ *
  * API (all JSON):
+ *   POST /api/pair                        {pin} — pairs this browser
  *   GET  /api/state                       settings, groups, guide sources, sync status
  *   POST /api/settings                    account, strip lists, group rows
  *   GET  /api/categories?source=N         a source's live categories (0 = main account)
@@ -62,6 +65,8 @@ import fi.iki.elonen.NanoHTTPD;
  *   GET  /api/backup?password=0|1         zip of settings, config, logos and guide lists
  *   POST /api/restore                     zip bytes from /api/backup; replaces everything
  *   POST /api/sync
+ *
+ * Stremio addons: see AddonsApi.
  */
 public class WebServer extends NanoHTTPD {
     private static final String TAG = "WebServer";
@@ -77,6 +82,7 @@ public class WebServer extends NanoHTTPD {
     private static final String NOT_A_BACKUP = "That file isn't a BingeTV Redux or FyrTuner backup";
 
     private final Context mContext;
+    private final AddonsApi mAddonsApi;
     // Category id -> streams, so browsing groups doesn't refetch from the panel every time.
     private final Map<String, List<XtreamClient.Stream>> mStreamCache = new HashMap<>();
     private final Map<String, Long> mStreamCacheTime = new HashMap<>();
@@ -89,6 +95,7 @@ public class WebServer extends NanoHTTPD {
     public WebServer(Context context) {
         super(PORT);
         mContext = context.getApplicationContext();
+        mAddonsApi = new AddonsApi(mContext);
     }
 
     @Override
@@ -97,8 +104,14 @@ public class WebServer extends NanoHTTPD {
         String client = session.getRemoteIpAddress();
         if (client != null) sRecentClients.put(client, System.currentTimeMillis());
         try {
+            if (!uri.startsWith("/api/") && !uri.startsWith("/logos/")) return serveAsset(uri);
+            if ("/api/pair".equals(uri) && Method.POST.equals(session.getMethod())) {
+                return pair(readBody(session));
+            }
+            if (!WebAuth.isPaired(mContext, session.getCookies().read(WebAuth.COOKIE))) {
+                return error(Response.Status.UNAUTHORIZED, "Enter the PIN shown on the TV");
+            }
             if (uri.startsWith("/logos/")) return serveLogo(uri);
-            if (!uri.startsWith("/api/")) return serveAsset(uri);
             if ("/api/logos/upload".equals(uri) && Method.POST.equals(session.getMethod())) {
                 return json(Response.Status.OK, uploadLogo(session));
             }
@@ -200,8 +213,11 @@ public class WebServer extends NanoHTTPD {
             case "/api/sync":
                 ChannelSyncWorker.syncNow(mContext);
                 return new JSONObject().put("ok", true);
-            default:
-                throw new IllegalArgumentException("Unknown endpoint " + uri);
+            default: {
+                Object result = mAddonsApi.route(uri, params, body);
+                if (result == null) throw new IllegalArgumentException("Unknown endpoint " + uri);
+                return result;
+            }
         }
     }
 
@@ -954,6 +970,10 @@ public class WebServer extends NanoHTTPD {
                     .put("version", BACKUP_VERSION).put("created", System.currentTimeMillis())
                     .toString(2).getBytes(StandardCharsets.UTF_8));
             putEntry(zip, "settings.json", settings.toString(2).getBytes(StandardCharsets.UTF_8));
+            // Addon URLs hold their configuration (often keys), so they're always included:
+            // without them the addons can't be restored.
+            putEntry(zip, "addons.json", Stremio.addons(mContext).toJson().toString(2)
+                    .getBytes(StandardCharsets.UTF_8));
             JSONObject configJson = new JSONObject(config.toJson().toString());
             if (!includePassword) {
                 JSONArray sources = configJson.optJSONArray("sources");
@@ -1003,6 +1023,7 @@ public class WebServer extends NanoHTTPD {
         JSONObject manifest = null;
         JSONObject settings = null;
         JSONObject config = null;
+        JSONObject addons = null;
         Map<String, byte[]> logos = new HashMap<>();
         Map<String, byte[]> guides = new HashMap<>();
         try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(
@@ -1015,6 +1036,8 @@ public class WebServer extends NanoHTTPD {
                     manifest = new JSONObject(new String(content, StandardCharsets.UTF_8));
                 } else if ("settings.json".equals(name)) {
                     settings = new JSONObject(new String(content, StandardCharsets.UTF_8));
+                } else if ("addons.json".equals(name)) {
+                    addons = new JSONObject(new String(content, StandardCharsets.UTF_8));
                 } else if ("config.json".equals(name)) {
                     config = new JSONObject(new String(content, StandardCharsets.UTF_8));
                 } else if (name.matches("logos/\\d+\\.png")) {
@@ -1055,6 +1078,8 @@ public class WebServer extends NanoHTTPD {
             }
         }
         ChannelConfig.replace(mContext, config);
+        // FyrTuner's backups have no addons: the ones here stay.
+        if (addons != null) Stremio.addons(mContext).replace(addons);
 
         File logoDir = new File(mContext.getFilesDir(), "logos");
         File[] oldLogos = logoDir.listFiles();
@@ -1084,6 +1109,7 @@ public class WebServer extends NanoHTTPD {
         return state().put("restored", new JSONObject()
                 .put("logos", logos.size())
                 .put("guides", guides.size())
+                .put("addons", addons == null ? -1 : Stremio.addons(mContext).all().size())
                 .put("passwordRestored", hasPassword));
     }
 
@@ -1142,19 +1168,40 @@ public class WebServer extends NanoHTTPD {
         return new JSONObject(new String(data, 0, read, StandardCharsets.UTF_8));
     }
 
-    private Response serveAsset(String uri) throws IOException {
-        if ("/logo.png".equals(uri) || "/icon.png".equals(uri)) {
-            Response response = newChunkedResponse(Response.Status.OK, "image/png",
-                    mContext.getAssets().open("web" + uri));
-            response.addHeader("Cache-Control", "max-age=86400");
+    /**
+     * Pairs a browser that sends the TV's PIN: its token goes in a cookie for a year, and
+     * every other API call needs it.
+     */
+    private Response pair(JSONObject body) throws JSONException {
+        try {
+            String token = WebAuth.pair(mContext, body.optString("pin"));
+            Response response = json(Response.Status.OK, new JSONObject().put("ok", true));
+            response.addHeader("Set-Cookie", WebAuth.COOKIE + "=" + token
+                    + "; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict");
             return response;
+        } catch (WebAuth.PairingException e) {
+            return error(e.locked ? Response.Status.TOO_MANY_REQUESTS
+                    : Response.Status.FORBIDDEN, e.getMessage());
         }
-        if (!"/".equals(uri) && !"/index.html".equals(uri)) {
+    }
+
+    /** The page and its scripts and images, from assets/web. Anyone may load these. */
+    private Response serveAsset(String uri) throws IOException {
+        String name = "/".equals(uri) ? "index.html" : uri.substring(1);
+        if (!name.matches("[a-z0-9_-]+\\.(html|js|css|png)")) {
             return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found");
         }
-        InputStream in = mContext.getAssets().open("web/index.html");
-        Response response = newChunkedResponse(Response.Status.OK, "text/html; charset=utf-8", in);
-        response.addHeader("Cache-Control", "no-store");
+        InputStream in;
+        try {
+            in = mContext.getAssets().open("web/" + name);
+        } catch (java.io.FileNotFoundException e) {
+            return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found");
+        }
+        String type = name.endsWith(".html") ? "text/html; charset=utf-8"
+                : name.endsWith(".js") ? "text/javascript; charset=utf-8"
+                : name.endsWith(".css") ? "text/css; charset=utf-8" : "image/png";
+        Response response = newChunkedResponse(Response.Status.OK, type, in);
+        response.addHeader("Cache-Control", name.endsWith(".png") ? "max-age=86400" : "no-store");
         return response;
     }
 

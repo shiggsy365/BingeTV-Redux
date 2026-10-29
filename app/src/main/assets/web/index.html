@@ -104,9 +104,39 @@
            background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px;
            opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100vw - 32px); }
   #toast.show { opacity: 1; }
+  .addon { border-top: 1px solid var(--line); padding: 12px 0; display: grid; gap: 8px; }
+  .addon:first-child { border-top: 0; }
+  .addon.off > :not(:last-child) { opacity: .55; }
+  .addonlogo { width: 40px; height: 40px; border-radius: 8px; object-fit: contain; flex: none;
+               background: var(--chip); }
+  .row.wrap { flex-wrap: wrap; }
+  .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  a.btn { color: inherit; text-decoration: none; display: inline-block; }
+  .newurl { display: grid; gap: 6px; }
+  .newurl[hidden] { display: none; }
+  #pair { position: fixed; inset: 0; z-index: 50; background: #15171c; color: #ececf2;
+          display: flex; align-items: center; justify-content: center; padding: 16px; }
+  #pair[hidden] { display: none; }
+  #pair form { width: 100%; max-width: 360px; text-align: center; }
+  #pair img { width: 100%; max-width: 300px; height: auto; }
+  #pair input { width: 100%; font: 600 36px/1 system-ui, sans-serif; letter-spacing: .4em;
+                text-align: center; padding: 12px 0 12px .4em; margin: 16px 0 12px;
+                border-radius: 10px; border: 2px solid #3a3d48; background: #0e0f14; color: #fff; }
+  #pair input:focus { outline: none; border-color: var(--accent); }
+  #pair .btn { width: 100%; padding: 12px; font-size: 16px; }
+  #pairError { color: #ff6b75; min-height: 1.4em; margin: 8px 0 0; }
 </style>
 </head>
 <body>
+<div id="pair" hidden>
+  <form id="pairForm" autocomplete="off">
+    <img src="/logo.png" alt="BingeTV Redux">
+    <p>Enter the PIN shown on your TV, in BingeTV Redux's Settings.</p>
+    <input id="pairPin" inputmode="numeric" pattern="[0-9]*" maxlength="4" aria-label="PIN">
+    <button class="btn primary" type="submit">Continue</button>
+    <p id="pairError" role="alert"></p>
+  </form>
+</div>
 <header>
   <h1><img src="/logo.png" alt="BingeTV Redux" class="logo"></h1>
   <span class="muted" id="syncStatus"></span>
@@ -115,13 +145,36 @@
 <div id="offline" role="status">Can't reach the Fire Stick. It may be asleep or its Wi-Fi
   signal may be weak. Press a button on the remote; this page reconnects by itself.</div>
 <nav>
-  <button data-tab="groups" class="active">Groups &amp; channels</button>
+  <button data-tab="addons" class="active">Addons</button>
+  <button data-tab="groups">Groups &amp; channels</button>
   <button data-tab="logos">Logos</button>
   <button data-tab="guides">Guides</button>
   <button data-tab="settings">Settings</button>
 </nav>
 <main>
-  <section id="tab-groups">
+  <section id="tab-addons">
+    <div class="panel">
+      <h2>Add an addon</h2>
+      <p class="muted">Paste the addon's manifest URL (ending in manifest.json) or its
+        stremio:// link. For an addon you configure, such as AIOStreams, set it up on its own
+        page first and paste the URL that gives you.</p>
+      <div class="row">
+        <input type="url" id="addonUrl" class="grow" placeholder="https://…/manifest.json" autocomplete="off">
+        <button class="btn primary" id="addonAdd">Add</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="row">
+        <h2 class="grow">Your addons</h2>
+        <button class="btn" id="addonRefreshAll">Refresh all</button>
+      </div>
+      <p class="muted">Streams and subtitles are listed in this order. Refreshing reads each
+        addon's manifest again, for new catalogs or settings.</p>
+      <div id="addonList"><p class="muted">Loading…</p></div>
+    </div>
+  </section>
+
+  <section id="tab-groups" hidden>
     <div class="layout">
       <div>
         <div class="panel">
@@ -296,6 +349,7 @@
 </dialog>
 <div id="toast"></div>
 
+<script src="/addons.js"></script>
 <script>
 let state = null, categories = {}, selectedGroup = null, channels = [], linkTargets = [];
 let chHideHidden = false;
@@ -305,6 +359,8 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 // Network failures (the Stick asleep or out of Wi-Fi range) show one banner instead of a
 // toast per request; it clears on the next request that gets through.
 class OfflineError extends Error {}
+// A request the TV refused because this browser isn't paired: the PIN screen is showing.
+class PairError extends OfflineError {}
 let offline = false;
 function setOffline(value) {
   if (value === offline) return;
@@ -322,10 +378,41 @@ async function api(path, body) {
     throw new OfflineError();
   }
   setOffline(false);
+  if (res.status === 401) { showPair(); throw new PairError(); }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }
+
+// ---- Pairing ----
+function showPair() {
+  if (!$('pair').hidden) return;
+  $('pair').hidden = false;
+  $('pairError').textContent = '';
+  $('pairPin').value = '';
+  $('pairPin').focus();
+}
+async function sendPin(pin) {
+  const res = await fetch('/api/pair', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({pin})});
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || res.statusText);
+  }
+}
+$('pairForm').onsubmit = e => {
+  e.preventDefault();
+  const pin = $('pairPin').value.trim();
+  if (!/^\d{4}$/.test(pin)) { $('pairError').textContent = 'The PIN is 4 digits'; return; }
+  sendPin(pin).then(() => {
+    $('pair').hidden = true;
+    start();
+  }).catch(err => { $('pairError').textContent = err.message; $('pairPin').select(); });
+};
+$('pairPin').oninput = e => {
+  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
+  if (e.target.value.length === 4) $('pairForm').requestSubmit();
+};
 function toast(msg) {
   const t = $('toast'); t.textContent = msg; t.classList.add('show');
   clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove('show'), 3000);
@@ -336,7 +423,8 @@ async function run(fn) {
 
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
-  ['groups', 'logos', 'guides', 'settings'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
+  ['addons', 'groups', 'logos', 'guides', 'settings'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
+  if (b.dataset.tab === 'addons') run(loadAddons);
   if (b.dataset.tab === 'logos') openLogos();
   if (b.dataset.tab === 'settings') $('prefMergeUpConfirm').checked = !pref('skipMergeUpConfirm');
 });
@@ -1099,9 +1187,23 @@ $('syncBtn').onclick = () => run(async () => {
   await api('/api/sync', {}); toast('Sync started');
   state.sync.running = true; state.sync.status = 'Syncing…'; renderSync();
 });
-setInterval(() => run(async () => { const s = await api('/api/state'); state.sync = s.sync; renderSync(); }), 4000);
+setInterval(() => { if ($('pair').hidden && state) run(async () => { const s = await api('/api/state'); state.sync = s.sync; renderSync(); }); }, 4000);
 
-run(async () => applyState(await api('/api/state')));
+function start() {
+  initAddons();
+  run(async () => applyState(await api('/api/state')));
+  run(loadAddons);
+}
+// The TV's QR code opens the page with the PIN in the address: pair with it, then drop it
+// from the address so it isn't kept in the browser's history.
+(async () => {
+  const pin = new URLSearchParams(location.search).get('pin');
+  if (pin) {
+    history.replaceState(null, '', location.pathname);
+    try { await sendPin(pin); } catch (e) { showPair(); $('pairError').textContent = e.message; return; }
+  }
+  start();
+})();
 </script>
 </body>
 </html>

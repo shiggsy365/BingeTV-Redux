@@ -1,32 +1,44 @@
 package com.shiggsy365.bingetvredux;
 
 import android.app.Activity;
-import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.os.Bundle;
-import android.text.TextUtils;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.format.DateUtils;
-import android.widget.Button;
-import android.widget.CheckBox;
-import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.TextView;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.EncodeHintType;
+import com.google.zxing.WriterException;
+import com.google.zxing.common.BitMatrix;
+import com.google.zxing.qrcode.QRCodeWriter;
+
+import java.util.Collections;
 
 /**
- * TV settings screen: the Xtream account and a sync button. Groups, channels and guides are
- * managed from the web page whose address this screen shows.
+ * TV settings: how to open the web page, where accounts, addons, channels and everything else
+ * are set up. Shows the address, a QR code that opens it with the PIN filled in, and the PIN,
+ * which can be changed. "Forget all browsers" makes every browser enter the PIN again.
  */
 public class MainActivity extends Activity {
+    private static final long STATUS_TICK_MS = 1_000;
 
-    private EditText mServer;
-    private EditText mUsername;
-    private EditText mPassword;
-    private CheckBox mUseHls;
+    private ImageView mQr;
+    private TextView mUrl;
+    private TextView mPin;
+    private TextView mBrowsers;
     private TextView mStatus;
-    private Button mSyncButton;
-
-    private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
+    private final Handler mHandler = new Handler(Looper.getMainLooper());
+    private final Runnable mTick = new Runnable() {
+        @Override
+        public void run() {
+            showStatus();
+            mHandler.postDelayed(this, STATUS_TICK_MS);
+        }
+    };
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -34,72 +46,75 @@ public class MainActivity extends Activity {
         setContentView(R.layout.main_activity);
         WebServerService.start(this);
 
-        mServer = findViewById(R.id.server);
-        mUsername = findViewById(R.id.username);
-        mPassword = findViewById(R.id.password);
-        mUseHls = findViewById(R.id.use_hls);
+        mQr = findViewById(R.id.qr);
+        mUrl = findViewById(R.id.web_url);
+        mPin = findViewById(R.id.pin);
+        mBrowsers = findViewById(R.id.browsers);
         mStatus = findViewById(R.id.status);
-        mSyncButton = findViewById(R.id.save_sync);
-
-        SharedPreferences prefs = XtreamClient.prefs(this);
-        mServer.setText(prefs.getString(XtreamClient.PREF_SERVER, ""));
-        mUsername.setText(prefs.getString(XtreamClient.PREF_USERNAME, ""));
-        mPassword.setText(prefs.getString(XtreamClient.PREF_PASSWORD, ""));
-        mUseHls.setChecked(prefs.getBoolean(XtreamClient.PREF_USE_HLS, false));
-        mSyncButton.setOnClickListener(v -> saveAndSync());
-
-        long lastSync = prefs.getLong(XtreamClient.PREF_LAST_SYNC, 0);
-        mStatus.setText(lastSync == 0 ? "Not synced yet"
-                : "Last synced " + DateUtils.getRelativeTimeSpanString(lastSync));
+        findViewById(R.id.sync).setOnClickListener(v -> {
+            ChannelSyncWorker.syncNow(getApplicationContext());
+            mStatus.setText("Syncing…");
+        });
+        findViewById(R.id.new_pin).setOnClickListener(v -> {
+            WebAuth.newPin(this);
+            showPairing();
+        });
+        findViewById(R.id.forget).setOnClickListener(v -> {
+            WebAuth.forgetBrowsers(this);
+            showPairing();
+        });
+        findViewById(R.id.sync).requestFocus();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        String url = WebServerService.pageUrl();
-        ((TextView) findViewById(R.id.web_url)).setText(
-                url != null ? url : "No network connection");
-    }
-
-    private void saveAndSync() {
-        String server = mServer.getText().toString().trim();
-        String username = mUsername.getText().toString().trim();
-        String password = mPassword.getText().toString().trim();
-        if (TextUtils.isEmpty(server) || TextUtils.isEmpty(username)
-                || TextUtils.isEmpty(password)) {
-            mStatus.setText("Enter the server, username and password");
-            return;
-        }
-        XtreamClient.prefs(this).edit()
-                .putString(XtreamClient.PREF_SERVER, server)
-                .putString(XtreamClient.PREF_USERNAME, username)
-                .putString(XtreamClient.PREF_PASSWORD, password)
-                .putBoolean(XtreamClient.PREF_USE_HLS, mUseHls.isChecked())
-                .commit();
-
-        mSyncButton.setEnabled(false);
-        mStatus.setText("Syncing channels and guide. This can take a few minutes…");
-        mExecutor.execute(() -> {
-            String error = new XtreamClient(server, username, password, mUseHls.isChecked())
-                    .checkAccount();
-            boolean ok = error == null && GuideSync.syncChannels(getApplicationContext());
-            if (error == null) {
-                ChannelSyncWorker.schedule(getApplicationContext(),
-                        ChannelSyncWorker.SYNC_INTERVAL_HOURS);
-            }
-            final String message = error != null ? error
-                    : ok ? "Sync complete" : GuideSync.sSyncStatus;
-            runOnUiThread(() -> {
-                if (isDestroyed()) return;
-                mSyncButton.setEnabled(true);
-                mStatus.setText(message);
-            });
-        });
+        showPairing();
+        mHandler.post(mTick);
     }
 
     @Override
-    protected void onDestroy() {
-        mExecutor.shutdownNow();
-        super.onDestroy();
+    protected void onPause() {
+        mHandler.removeCallbacks(mTick);
+        super.onPause();
+    }
+
+    private void showPairing() {
+        String url = WebServerService.pageUrl();
+        String pin = WebAuth.pin(this);
+        mUrl.setText(url != null ? url : "No network connection");
+        mPin.setText(pin);
+        mQr.setImageBitmap(url != null ? qrCode(url + "/?pin=" + pin, 600) : null);
+        int browsers = WebAuth.browserCount(this);
+        mBrowsers.setText(browsers == 0 ? "No browsers paired yet"
+                : browsers == 1 ? "1 browser paired" : browsers + " browsers paired");
+    }
+
+    private void showStatus() {
+        if (GuideSync.sSyncRunning) {
+            mStatus.setText(GuideSync.sSyncStatus);
+            return;
+        }
+        long lastSync = XtreamClient.prefs(this).getLong(XtreamClient.PREF_LAST_SYNC, 0);
+        String status = GuideSync.sSyncStatus;
+        mStatus.setText((status != null && !status.isEmpty() ? status + " · " : "")
+                + (lastSync == 0 ? "Live TV not synced yet"
+                : "Live TV last synced " + DateUtils.getRelativeTimeSpanString(lastSync)));
+    }
+
+    private static Bitmap qrCode(String text, int size) {
+        try {
+            BitMatrix matrix = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size,
+                    Collections.singletonMap(EncodeHintType.MARGIN, 0));
+            int[] pixels = new int[size * size];
+            for (int y = 0; y < size; y++) {
+                for (int x = 0; x < size; x++) {
+                    pixels[y * size + x] = matrix.get(x, y) ? Color.BLACK : Color.WHITE;
+                }
+            }
+            return Bitmap.createBitmap(pixels, size, size, Bitmap.Config.RGB_565);
+        } catch (WriterException e) {
+            return null;
+        }
     }
 }
