@@ -28,7 +28,7 @@ public class StreamsTest {
         assertEquals("HEVC", q.codec);
         assertTrue(q.remux);
         assertTrue(q.cached);
-        assertEquals((long) (58.2 * (1L << 30)), q.size);
+        assertEquals(58_200_000_000L, q.size);
         assertEquals("https://r", s.headers.get("Referer"));
         assertEquals(Arrays.asList("4K", "DV", "HDR10+", "REMUX", "HEVC", "58.2 GB", "Cached"),
                 Streams.tags(s));

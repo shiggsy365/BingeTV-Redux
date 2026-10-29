@@ -2,4 +2,11 @@
 <resources>
     <dimen name="guide_channel_column">112dp</dimen>
     <dimen name="guide_row_height">40dp</dimen>
+    <dimen name="screen_margin">48dp</dimen>
+    <dimen name="hero_height">236dp</dimen>
+    <dimen name="hero_backdrop_height">400dp</dimen>
+    <dimen name="poster_width">112dp</dimen>
+    <dimen name="poster_height">168dp</dimen>
+    <dimen name="landscape_width">224dp</dimen>
+    <dimen name="landscape_height">126dp</dimen>
 </resources>

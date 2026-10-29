@@ -203,7 +203,10 @@ public final class Stream {
                 if (m.find()) {
                     double value = Double.parseDouble(m.group(1).replace(',', '.'));
                     String unit = m.group(2).toLowerCase(Locale.ROOT);
-                    long factor = unit.startsWith("t") ? 1L << 40 : unit.startsWith("g") ? 1L << 30 : 1L << 20;
+                    // GB/MB as addons mean them (decimal); GiB/MiB binary.
+                    long factor = unit.equals("tb") ? 1_000_000_000_000L
+                            : unit.equals("gb") ? 1_000_000_000L : unit.equals("gib") ? 1L << 30
+                            : unit.equals("mb") ? 1_000_000L : 1L << 20;
                     size = (long) (value * factor);
                 }
             }
@@ -220,11 +223,12 @@ public final class Stream {
         }
     }
 
+    /** Decimal units, as addons and file managers show sizes. */
     public static String formatSize(long size) {
         if (size <= 0) return "";
-        if (size >= 1L << 40) return String.format(Locale.ROOT, "%.1f TB", size / (double) (1L << 40));
-        if (size >= 1L << 30) return String.format(Locale.ROOT, "%.1f GB", size / (double) (1L << 30));
-        if (size >= 1L << 20) return String.format(Locale.ROOT, "%.1f MB", size / (double) (1L << 20));
+        if (size >= 1_000_000_000_000L) return String.format(Locale.ROOT, "%.1f TB", size / 1e12);
+        if (size >= 1_000_000_000L) return String.format(Locale.ROOT, "%.1f GB", size / 1e9);
+        if (size >= 1_000_000L) return String.format(Locale.ROOT, "%.0f MB", size / 1e6);
         return size + " B";
     }
 }

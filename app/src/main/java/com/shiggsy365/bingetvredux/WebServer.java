@@ -125,7 +125,8 @@ public class WebServer extends NanoHTTPD {
             JSONObject body = Method.POST.equals(session.getMethod()) ? readBody(session) : null;
             Object result = route(uri, session.getParms(), body);
             return json(Response.Status.OK, result);
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException
+                 | com.shiggsy365.bingetvredux.stremio.StremioException e) {
             return error(Response.Status.BAD_REQUEST, e.getMessage());
         } catch (Exception e) {
             Log.e(TAG, "Request failed: " + uri, e);

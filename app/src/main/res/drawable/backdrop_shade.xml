@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Darkens a full-screen backdrop so text over it stays readable. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient android:angle="0" android:startColor="#F20E0F14"
+        android:centerColor="#B30E0F14" android:endColor="#4D0E0F14" />
+</shape>

@@ -44,14 +44,28 @@
         android:theme="@style/Theme.Leanback"
         android:usesCleartextTraffic="true">
 
-        <!-- The live TV guide: the app tile opens it. -->
-        <activity android:name=".GuideActivity"
+        <!-- Home and the hubs: the app tile opens it. -->
+        <activity android:name=".HomeActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity android:name=".DetailsActivity"
+            android:exported="false" />
+
+        <activity android:name=".StreamsActivity"
+            android:exported="false" />
+
+        <activity android:name=".VideoPlayerActivity"
+            android:exported="false"
+            android:configChanges="keyboard|keyboardHidden|navigation" />
+
+        <!-- The live TV guide, from Home's menu bar. -->
+        <activity android:name=".GuideActivity"
+            android:exported="false" />
 
         <activity android:name=".PlayerActivity"
             android:exported="false"

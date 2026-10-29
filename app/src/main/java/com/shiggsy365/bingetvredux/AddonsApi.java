@@ -14,6 +14,7 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -28,6 +29,12 @@ import java.util.concurrent.Future;
  *                                        replaces a reconfigured addon in place
  *   POST /api/addons/delete              {key}
  *   POST /api/addons/refresh             {key?} — refetches one manifest, or all of them
+ *   GET  /api/catalogs                   hubs with their catalogs, and the search catalogs
+ *   POST /api/catalogs/update            {key, shown?, onHome?, name?, hub?, search?,
+ *                                        searchName?, move?: -1|1, moveSearch?: -1|1}
+ *   POST /api/hubs                       {name} — a hub of the user's own
+ *   POST /api/hubs/update                {id, name} — "" gives a built-in hub its own name
+ *   POST /api/hubs/delete                {id}
  */
 final class AddonsApi {
     private final Context mContext;
@@ -48,9 +55,22 @@ final class AddonsApi {
                 return list();
             case "/api/addons/refresh":
                 return refresh(body.optString("key", ""));
+            case "/api/catalogs":
+                return catalogs();
+            case "/api/catalogs/update":
+                return updateCatalog(body);
+            case "/api/hubs":
+                store().createHub(body.optString("name"));
+                return catalogs();
+            case "/api/hubs/update":
+                store().renameHub(body.getString("id"), body.optString("name"));
+                return catalogs();
+            case "/api/hubs/delete":
+                store().removeHub(body.getString("id"));
+                return catalogs();
             case "/api/debug/stremio":
                 if (!BuildConfig.DEBUG) return null;
-                return debug(params.get("type"), params.get("id"));
+                return debug(params.get("type"), params.get("id"), params);
             default:
                 return null;
         }
@@ -124,8 +144,58 @@ final class AddonsApi {
         }
     }
 
+    /** Every hub with its catalogs (shown or not), and the search catalogs, all in order. */
+    private JSONObject catalogs() throws JSONException {
+        JSONArray hubs = new JSONArray();
+        for (AddonStore.HubInfo hub : store().hubs()) {
+            JSONArray entries = new JSONArray();
+            for (AddonStore.Entry e : store().hubEntries(hub.id)) {
+                AddonStore.CatalogPrefs p = e.prefs();
+                entries.put(new JSONObject()
+                        .put("key", e.key())
+                        .put("addon", e.addon.manifest.name)
+                        .put("name", e.catalog.name)
+                        .put("displayName", e.addon.displayName(e.catalog))
+                        .put("customName", p.name)
+                        .put("type", e.catalog.type)
+                        .put("shown", p.home)
+                        .put("onHome", e.addon.onHome(e.catalog))
+                        .put("hub", hub.id));
+            }
+            hubs.put(new JSONObject().put("id", hub.id).put("name", hub.name)
+                    .put("custom", hub.custom).put("catalogs", entries));
+        }
+        JSONArray search = new JSONArray();
+        for (AddonStore.Entry e : store().searchEntries()) {
+            search.put(new JSONObject()
+                    .put("key", e.key())
+                    .put("addon", e.addon.manifest.name)
+                    .put("name", e.catalog.name)
+                    .put("searchName", e.addon.searchName(e.catalog))
+                    .put("type", e.catalog.type)
+                    .put("people", e.catalog.isPeopleSearch())
+                    .put("enabled", e.prefs().search));
+        }
+        return new JSONObject().put("hubs", hubs).put("search", search);
+    }
+
+    private JSONObject updateCatalog(JSONObject body) throws Exception {
+        String key = body.getString("key");
+        store().setCatalogPrefs(key,
+                body.has("shown") ? body.getBoolean("shown") : null,
+                body.has("search") ? body.getBoolean("search") : null,
+                body.has("onHome") ? body.getBoolean("onHome") : null,
+                body.has("name") ? body.getString("name") : null,
+                body.has("searchName") ? body.getString("searchName") : null,
+                body.has("hub") ? body.getString("hub") : null);
+        if (body.has("move")) store().moveInHub(key, body.getInt("move"));
+        if (body.has("moveSearch")) store().moveSearchCatalog(key, body.getInt("moveSearch"));
+        return catalogs();
+    }
+
     /** Debug builds: what the addons give for a title, to check the client against them. */
-    private JSONObject debug(String type, String id) throws Exception {
+    private JSONObject debug(String type, String id, Map<String, String> params)
+            throws Exception {
         StremioClient client = Stremio.client(mContext);
         JSONObject out = new JSONObject();
         long t0 = System.currentTimeMillis();
@@ -144,10 +214,16 @@ final class AddonsApi {
         List<com.shiggsy365.bingetvredux.stremio.Stream> ready =
                 com.shiggsy365.bingetvredux.stremio.Streams.prepare(streams.streams,
                         new com.shiggsy365.bingetvredux.stremio.Streams.Prefs());
+        // With q, the streams whose text has it (e.g. "DTS"), with their place in the list.
+        String q = params.get("q");
         JSONArray top = new JSONArray();
-        for (int i = 0; i < Math.min(5, ready.size()); i++) {
-            top.put(ready.get(i).addon + ": " + String.join(" · ",
-                    com.shiggsy365.bingetvredux.stremio.Streams.tags(ready.get(i))));
+        for (int i = 0, n = 0; i < ready.size() && n < 5; i++) {
+            com.shiggsy365.bingetvredux.stremio.Stream st = ready.get(i);
+            if (q != null && !st.text().toLowerCase(Locale.ROOT).contains(q.toLowerCase(Locale.ROOT))) continue;
+            top.put((i + 1) + ". " + st.addon + ": " + String.join(" · ",
+                    com.shiggsy365.bingetvredux.stremio.Streams.tags(st)) + " | "
+                    + st.title.replace('\n', ' '));
+            n++;
         }
         out.put("videoId", videoId).put("streams", streams.streams.size())
                 .put("playable", ready.size()).put("top", top)
