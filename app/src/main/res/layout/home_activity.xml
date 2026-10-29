@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Home and the hubs: menu bar, the focused title's details over its backdrop, and rows. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/guide_background"
@@ -13,6 +14,19 @@
         android:layout_marginStart="280dp"
         android:scaleType="centerCrop"
         android:importantForAccessibility="no" />
+
+    <!-- A trailer playing over the backdrop (if the profile has them on). -->
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/hero_video"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/hero_backdrop_height"
+        android:layout_marginStart="280dp"
+        android:alpha="0"
+        android:focusable="false"
+        app:resize_mode="zoom"
+        app:shutter_background_color="@android:color/transparent"
+        app:surface_type="texture_view"
+        app:use_controller="false" />
 
     <View
         android:layout_width="match_parent"

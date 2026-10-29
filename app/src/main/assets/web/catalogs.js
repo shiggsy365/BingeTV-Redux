@@ -84,7 +84,6 @@ function renderCatalogs() {
       <label class="row" title="Show this catalog in the hub"><input type="checkbox" data-field="shown"${c.shown ? ' checked' : ''}></label>
       <div class="name"><input type="text" data-field="name" value="${esc(c.customName)}" placeholder="${esc(c.displayName)}"></div>
       <div class="src muted ellipsis">${esc(c.addon)} · ${esc(TYPE_LABELS[c.type] || c.type)}${c.customName ? ' · was “' + esc(c.name) + '”' : ''}</div>
-      <label class="row"><input type="checkbox" data-field="onHome"${c.onHome ? ' checked' : ''}${c.shown ? '' : ' disabled'}> On Home</label>
       <select data-field="hub" title="Hub">${options.replace(`value="${esc(hub.id)}"`, `value="${esc(hub.id)}" selected`)}</select>
       <button class="btn" data-move="-1"${i === 0 ? ' disabled' : ''} title="Move up">▲</button>
       <button class="btn" data-move="1"${i === hub.catalogs.length - 1 ? ' disabled' : ''} title="Move down">▼</button>

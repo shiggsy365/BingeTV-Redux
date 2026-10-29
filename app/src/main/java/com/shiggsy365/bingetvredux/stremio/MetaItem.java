@@ -50,6 +50,8 @@ public final class MetaItem {
     public final String certification;
     public final List<Video> videos;
     public final String defaultVideoId;
+    /** IMDb/TMDB/TVDB… ids ("imdb" → "tt0903747"), from the id and any *_id fields. */
+    public final Map<String, String> ids;
 
     public static final class Person {
         public final String name;
@@ -90,6 +92,7 @@ public final class MetaItem {
         this.videos = videos;
         JSONObject hints = data.optJSONObject("behaviorHints");
         defaultVideoId = hints == null ? "" : hints.optString("defaultVideoId", "");
+        ids = externalIds(id, data);
     }
 
     /** A catalog entry, or null for entries that can't be shown. */

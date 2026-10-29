@@ -39,10 +39,11 @@ public final class CatalogRows {
         void onItemClicked(MetaItem item);
     }
 
-    /** One row: a catalog to load, or a fixed list of items. */
+    /** One row: a catalog to load, items worked out by code (loader), or a fixed list. */
     public static final class Row {
         final String title;
         final AddonStore.Entry entry;
+        final java.util.concurrent.Callable<List<MetaItem>> loader;
         final List<MetaItem> items = new ArrayList<>();
         int nextSkip;
         int pageSize;
@@ -54,11 +55,20 @@ public final class CatalogRows {
         public Row(String title, AddonStore.Entry entry) {
             this.title = title;
             this.entry = entry;
+            this.loader = null;
+        }
+
+        /** Items from {@code loader}, run off the main thread when the row is first shown. */
+        public Row(String title, java.util.concurrent.Callable<List<MetaItem>> loader) {
+            this.title = title;
+            this.entry = null;
+            this.loader = loader;
         }
 
         public Row(String title, List<MetaItem> items) {
             this.title = title;
             this.entry = null;
+            this.loader = null;
             this.items.addAll(items);
             nextSkip = -1;
             loaded = true;
@@ -127,6 +137,21 @@ public final class CatalogRows {
     // ---- Loading ----
 
     private void load(Row row) {
+        if (row.loader != null) {
+            if (row.loading || row.loaded) return;
+            row.loading = true;
+            mExecutor.execute(() -> {
+                List<MetaItem> items;
+                try {
+                    items = row.loader.call();
+                } catch (Exception e) {
+                    items = new ArrayList<>();
+                }
+                List<MetaItem> result = items;
+                mHandler.post(() -> showItems(row, result));
+            });
+            return;
+        }
         if (row.entry == null || row.loading || (row.loaded && row.nextSkip < 0)) return;
         boolean first = !row.loaded;
         int skip = first ? 0 : row.nextSkip;
@@ -168,8 +193,20 @@ public final class CatalogRows {
             refreshShown();
         } else if (row.adapter != null) {
             if (replace) row.adapter.notifyDataSetChanged();
+            // New items go in before the "See all" card.
             else row.adapter.notifyItemRangeInserted(before, row.items.size() - before);
         }
+    }
+
+    private void showItems(Row row, List<MetaItem> items) {
+        if (mActivity.isDestroyed()) return;
+        row.loading = false;
+        row.loaded = true;
+        row.nextSkip = -1;
+        row.items.clear();
+        row.items.addAll(items);
+        if (items.isEmpty()) refreshShown();
+        else if (row.adapter != null) row.adapter.notifyDataSetChanged();
     }
 
     private static boolean sameItems(List<MetaItem> a, List<MetaItem> b) {
@@ -223,10 +260,21 @@ public final class CatalogRows {
     }
 
     private final class PosterAdapter extends RecyclerView.Adapter<PosterHolder> {
+        private static final int TYPE_POSTER = 0, TYPE_SEE_ALL = 1;
         private final Row mRow;
 
         PosterAdapter(Row row) {
             mRow = row;
+        }
+
+        /** A catalog row ends with a "See all" card that opens the whole catalog. */
+        private boolean hasSeeAll() {
+            return mRow.entry != null && !mRow.items.isEmpty();
+        }
+
+        @Override
+        public int getItemViewType(int position) {
+            return position < mRow.items.size() ? TYPE_POSTER : TYPE_SEE_ALL;
         }
 
         @NonNull
@@ -238,9 +286,36 @@ public final class CatalogRows {
 
         @Override
         public void onBindViewHolder(@NonNull PosterHolder holder, int position) {
+            if (getItemViewType(position) == TYPE_SEE_ALL) {
+                ViewGroup.LayoutParams lp = holder.itemView.getLayoutParams();
+                lp.width = holder.itemView.getResources().getDimensionPixelSize(R.dimen.poster_width);
+                lp.height = holder.itemView.getResources().getDimensionPixelSize(R.dimen.poster_height);
+                holder.itemView.setLayoutParams(lp);
+                holder.name.setText("See all\n›");
+                Images.load(holder.image, null);
+                Badges.clear(holder.itemView);
+                holder.itemView.setOnClickListener(v -> mActivity.startActivity(
+                        CatalogActivity.intent(mActivity, mRow.entry, mRow.title)));
+                holder.itemView.setOnFocusChangeListener((v, focused) -> {
+                    float scale = focused ? 1.08f : 1f;
+                    v.animate().scaleX(scale).scaleY(scale).setDuration(120).start();
+                });
+                return;
+            }
             MetaItem item = mRow.items.get(position);
+            ViewGroup.LayoutParams lp = holder.itemView.getLayoutParams();
+            boolean landscape = "landscape".equals(item.posterShape);
+            lp.width = holder.itemView.getResources().getDimensionPixelSize(
+                    landscape ? R.dimen.landscape_width : R.dimen.poster_width);
+            lp.height = holder.itemView.getResources().getDimensionPixelSize(
+                    landscape ? R.dimen.landscape_height : R.dimen.poster_height);
+            holder.itemView.setLayoutParams(lp);
             holder.name.setText(item.name);
+            // Channel logos are shown whole; artwork fills the card.
+            holder.image.setScaleType(item.id.startsWith(HomeRows.LIVE_PREFIX)
+                    ? ImageView.ScaleType.FIT_CENTER : ImageView.ScaleType.CENTER_CROP);
             Images.load(holder.image, item.poster);
+            Badges.bind(holder.itemView, item);
             holder.itemView.setOnClickListener(v -> mListener.onItemClicked(item));
             holder.itemView.setOnFocusChangeListener((v, focused) -> {
                 float scale = focused ? 1.08f : 1f;
@@ -255,7 +330,7 @@ public final class CatalogRows {
 
         @Override
         public int getItemCount() {
-            return mRow.items.size();
+            return mRow.items.size() + (hasSeeAll() ? 1 : 0);
         }
     }
 

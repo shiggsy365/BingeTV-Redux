@@ -112,7 +112,20 @@
                 android:id="@+id/forget"
                 style="@style/OsdButton"
                 android:text="Forget all browsers" />
+
+            <TextView
+                android:id="@+id/updates"
+                style="@style/OsdButton"
+                android:text="Check for updates" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/version"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:textColor="@color/guide_muted"
+            android:textSize="14sp" />
 
         <TextView
             android:id="@+id/status"

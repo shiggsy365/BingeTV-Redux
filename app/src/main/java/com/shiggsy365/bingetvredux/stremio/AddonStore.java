@@ -33,8 +33,10 @@ import java.util.regex.Pattern;
  * the web server and the TV screens, so every method is synchronized.
  */
 public final class AddonStore {
+    /** The hub whose catalogs are on Home. */
+    public static final String HOME = "home";
     public static final List<String> HUBS =
-            Collections.unmodifiableList(Arrays.asList("movies", "tvshows", "anime", "more"));
+            Collections.unmodifiableList(Arrays.asList("home", "movies", "tvshows", "anime", "more"));
     private static final Set<String> HIDDEN_BY_DEFAULT_TYPES =
             new HashSet<>(Collections.singletonList("music"));
     private static final int SCHEMA_VERSION = 1;
@@ -44,16 +46,14 @@ public final class AddonStore {
 
     /** How the user has organised one catalog. Empty strings mean "the addon's own". */
     public static final class CatalogPrefs {
-        public boolean home = true;     // shown in its hub
+        public boolean shown = true;    // shown in its hub
         public boolean search = true;   // used by Search
-        public Boolean front;           // pinned to Home; null = the addon's choice
         public String name = "";        // the user's name for it when browsing
         public String searchName = "";  // the user's name for it in search
         public String hub = "";         // the hub it's in ("" = the usual one for its type)
 
         JSONObject toJson() throws JSONException {
-            JSONObject o = new JSONObject().put("home", home).put("search", search);
-            if (front != null) o.put("front", front);
+            JSONObject o = new JSONObject().put("home", shown).put("search", search);
             if (!name.isEmpty()) o.put("name", name);
             if (!searchName.isEmpty()) o.put("searchName", searchName);
             if (!hub.isEmpty()) o.put("hub", hub);
@@ -62,10 +62,8 @@ public final class AddonStore {
 
         static CatalogPrefs fromJson(JSONObject o) {
             CatalogPrefs p = new CatalogPrefs();
-            p.home = o.optBoolean("home", true);
+            p.shown = o.optBoolean("home", true);
             p.search = o.optBoolean("search", true);
-            Object front = o.opt("front");
-            p.front = front instanceof Boolean ? (Boolean) front : null;
             p.name = o.optString("name", "");
             p.searchName = o.optString("searchName", "");
             p.hub = o.optString("hub", "");
@@ -108,7 +106,7 @@ public final class AddonStore {
             CatalogPrefs p = catalogPrefs.get(catalog.key());
             if (p != null) return p;
             p = new CatalogPrefs();
-            p.home = !HIDDEN_BY_DEFAULT_TYPES.contains(catalog.type);
+            p.shown = !HIDDEN_BY_DEFAULT_TYPES.contains(catalog.type);
             return p;
         }
 
@@ -127,11 +125,6 @@ public final class AddonStore {
         public String searchName(Manifest.Catalog catalog) {
             String name = prefs(catalog).searchName;
             return name.isEmpty() ? catalog.name : name;
-        }
-
-        public boolean onHome(Manifest.Catalog catalog) {
-            Boolean front = prefs(catalog).front;
-            return front != null ? front : catalog.defaultOnHome();
         }
 
         JSONObject toJson() throws JSONException {
@@ -437,6 +430,7 @@ public final class AddonStore {
 
     public static String builtInHubName(String hub) {
         switch (hub) {
+            case "home": return "Home";
             case "movies": return "Movies";
             case "tvshows": return "TV Shows";
             case "anime": return "Anime";
@@ -504,7 +498,7 @@ public final class AddonStore {
     /** The catalogs shown in a hub, in order. */
     public synchronized List<Entry> hubCatalogs(String hub) {
         List<Entry> out = new ArrayList<>();
-        for (Entry e : hubEntries(hub)) if (e.prefs().home) out.add(e);
+        for (Entry e : hubEntries(hub)) if (e.prefs().shown) out.add(e);
         return out;
     }
 
@@ -512,15 +506,6 @@ public final class AddonStore {
     public synchronized List<HubInfo> hubsInUse() {
         List<HubInfo> out = new ArrayList<>();
         for (HubInfo h : hubs()) if (!hubCatalogs(h.id).isEmpty()) out.add(h);
-        return out;
-    }
-
-    /** Catalogs on Home, in browsing order. */
-    public synchronized List<Entry> homeCatalogs() {
-        List<Entry> out = new ArrayList<>();
-        for (Entry e : browsable()) {
-            if (e.prefs().home && e.addon.onHome(e.catalog)) out.add(e);
-        }
         return out;
     }
 
@@ -564,17 +549,16 @@ public final class AddonStore {
      * Changes one catalog's preferences. Null leaves a field as it is; for names and hub an
      * empty string restores the addon's own.
      */
-    public synchronized void setCatalogPrefs(String key, Boolean home, Boolean search,
-            Boolean front, String name, String searchName, String hub) throws StremioException {
+    public synchronized void setCatalogPrefs(String key, Boolean shown, Boolean search,
+            String name, String searchName, String hub) throws StremioException {
         Entry e = entry(key);
         CatalogPrefs p = e.addon.catalogPrefs.get(e.catalog.key());
         if (p == null) {
             p = e.addon.prefs(e.catalog);
             e.addon.catalogPrefs.put(e.catalog.key(), p);
         }
-        if (home != null) p.home = home;
+        if (shown != null) p.shown = shown;
         if (search != null) p.search = search;
-        if (front != null) p.front = front;
         if (name != null) p.name = name.trim();
         if (searchName != null) p.searchName = searchName.trim();
         if (hub != null) p.hub = hubIds().contains(hub) ? hub : "";

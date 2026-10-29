@@ -90,7 +90,7 @@ public class AddonStoreTest {
         assertEquals(Arrays.asList("movie/search"), keys(store.searchCatalogs()));
         String kids = store.createHub("Kids");
         String key = store.get(META_URL).key() + "|series/top";
-        store.setCatalogPrefs(key, null, null, null, "Shows", null, kids);
+        store.setCatalogPrefs(key, null, null, "Shows", null, kids);
         AddonStore loaded = reload();
         assertEquals(Arrays.asList("series/top"), keys(loaded.hubCatalogs(kids)));
         assertEquals("Shows", loaded.entry(key).addon.displayName(loaded.entry(key).catalog));
@@ -102,7 +102,7 @@ public class AddonStoreTest {
     @Test
     public void updateManifestDropsStalePrefs() throws Exception {
         String metaKey = store.get(META_URL).key();
-        store.setCatalogPrefs(metaKey + "|series/top", false, null, null, null, null, null);
+        store.setCatalogPrefs(metaKey + "|series/top", false, null, null, null, null);
         JSONObject trimmed = new JSONObject(Fixtures.CINEMETA_LIKE).put("version", "2.0.0");
         trimmed.put("catalogs", new org.json.JSONArray().put(trimmed.getJSONArray("catalogs").get(0)));
         store.updateManifest(META_URL, Manifest.fromJson(trimmed), 2);
@@ -114,7 +114,7 @@ public class AddonStoreTest {
     @Test
     public void replaceUrlKeepsPlaceAndPrefs() throws Exception {
         String oldKey = store.get(META_URL).key();
-        store.setCatalogPrefs(oldKey + "|movie/top", null, null, null, "Films", null, null);
+        store.setCatalogPrefs(oldKey + "|movie/top", null, null, "Films", null, null);
         store.moveInHub(oldKey + "|movie/top", 0);
         String newUrl = "https://meta.example/new/manifest.json";
         store.replaceUrl(META_URL, newUrl, Fixtures.manifest(Fixtures.CINEMETA_LIKE), 3);

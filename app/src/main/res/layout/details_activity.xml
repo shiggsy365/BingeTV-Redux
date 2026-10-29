@@ -103,6 +103,29 @@
                     android:id="@+id/streams"
                     style="@style/ActionButton"
                     android:text="Choose stream" />
+
+                <TextView
+                    android:id="@+id/start_over"
+                    style="@style/ActionButton"
+                    android:text="Start over"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/trailer"
+                    style="@style/ActionButton"
+                    android:text="Trailer"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/watched"
+                    style="@style/ActionButton"
+                    android:text="Mark watched" />
+
+                <TextView
+                    android:id="@+id/watchlist"
+                    style="@style/ActionButton"
+                    android:text="Add to watchlist"
+                    android:visibility="gone" />
             </LinearLayout>
 
             <TextView

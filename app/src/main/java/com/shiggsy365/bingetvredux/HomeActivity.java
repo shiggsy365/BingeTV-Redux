@@ -28,9 +28,13 @@ import java.util.Locale;
  * and Settings), the focused title's details over its backdrop, and rows of posters below.
  */
 public class HomeActivity extends Activity implements CatalogRows.Listener {
-    static final String PAGE_HOME = "home";
+    static final String PAGE_HOME = AddonStore.HOME;
     private static final String PAGE_LIVE = "live";
+    private static final String PAGE_SEARCH = "search";
+    private static final String PAGE_PROFILE = "profile";
     private static final String PAGE_SETTINGS = "settings";
+    // Whether "Who's watching?" has been asked since the app started.
+    private static boolean sProfileChosen;
     private static final long HERO_DELAY_MS = 150;
     private static final long CLOCK_TICK_MS = 15_000;
 
@@ -50,9 +54,12 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     private String mPage = PAGE_HOME;
     // The catalogs on the page, to tell when the web page has changed them.
     private List<String> mPageKeys = new ArrayList<>();
+    // The profile and watch state the page was built for: either changing rebuilds it.
+    private String mPageState = "";
     private MetaItem mHeroItem;
     private MetaItem mPendingHero;
     private final Runnable mShowHero = () -> bindHero(mPendingHero);
+    private HeroTrailer mTrailer;
     private final Runnable mClockTick = new Runnable() {
         @Override
         public void run() {
@@ -78,7 +85,12 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         mRowsView = findViewById(R.id.rows);
         mRows = new CatalogRows(this, mRowsView, this);
         mRows.setOnChanged(this::updateEmpty);
+        mTrailer = new HeroTrailer(this, findViewById(R.id.hero_video));
         if (savedInstanceState != null) mPage = savedInstanceState.getString("page", PAGE_HOME);
+        if (!sProfileChosen && Profiles.all(this).size() > 1) {
+            startActivity(new Intent(this, ProfilesActivity.class));
+        }
+        sProfileChosen = true;
         openDebugTitle(getIntent());
     }
 
@@ -105,13 +117,18 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         super.onResume();
         mHandler.post(mClockTick);
         buildMenu();
-        // Addons and catalogs may have changed on the web page.
-        if (!pageKeys(mPage).equals(mPageKeys)) showPage(mPage);
+        Mdblist.syncIfDue(this);
+        Updates.checkIfDue(this);
+        // Addons and catalogs may have changed on the web page, and what's been watched.
+        if (!pageKeys(mPage).equals(mPageKeys) || !pageState().equals(mPageState)) {
+            showPage(mPage);
+        }
     }
 
     @Override
     protected void onPause() {
         mHandler.removeCallbacks(mClockTick);
+        mTrailer.stop();
         super.onPause();
     }
 
@@ -124,6 +141,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     @Override
     protected void onDestroy() {
         mRows.destroy();
+        mTrailer.destroy();
         mHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
@@ -150,8 +168,12 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     private void buildMenu() {
         mMenu.removeAllViews();
         addMenuItem(PAGE_HOME, "Home");
-        for (AddonStore.HubInfo hub : Stremio.addons(this).hubsInUse()) addMenuItem(hub.id, hub.name);
+        for (AddonStore.HubInfo hub : Stremio.addons(this).hubsInUse()) {
+            if (!AddonStore.HOME.equals(hub.id)) addMenuItem(hub.id, hub.name);
+        }
+        addMenuItem(PAGE_SEARCH, "Search");
         addMenuItem(PAGE_LIVE, "Live TV");
+        if (Profiles.all(this).size() > 1) addMenuItem(PAGE_PROFILE, Profiles.current(this).name);
         addMenuItem(PAGE_SETTINGS, "Settings");
         // A hub that's gone (no catalogs left) falls back to Home.
         if (mMenu.findViewWithTag(mPage) == null) mPage = PAGE_HOME;
@@ -181,6 +203,10 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     private void openPage(String page) {
         if (PAGE_LIVE.equals(page)) {
             startActivity(new Intent(this, GuideActivity.class));
+        } else if (PAGE_SEARCH.equals(page)) {
+            startActivity(new Intent(this, SearchActivity.class));
+        } else if (PAGE_PROFILE.equals(page)) {
+            startActivity(new Intent(this, ProfilesActivity.class));
         } else if (PAGE_SETTINGS.equals(page)) {
             startActivity(new Intent(this, MainActivity.class));
         } else if (!page.equals(mPage)) {
@@ -194,7 +220,8 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         AddonStore store = Stremio.addons(this);
         List<CatalogRows.Row> rows = new ArrayList<>();
         if (PAGE_HOME.equals(page)) {
-            for (AddonStore.Entry e : store.homeCatalogs()) {
+            rows.addAll(HomeRows.rows(this));
+            for (AddonStore.Entry e : store.hubCatalogs(AddonStore.HOME)) {
                 rows.add(new CatalogRows.Row(homeTitle(e), e));
             }
         } else {
@@ -218,7 +245,9 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
 
     private List<String> pageKeys(String page) {
         List<String> keys = new ArrayList<>();
-        for (CatalogRows.Row row : pageRows(page)) keys.add(row.title + "|" + row.entry.key());
+        for (CatalogRows.Row row : pageRows(page)) {
+            keys.add(row.title + "|" + (row.entry == null ? "" : row.entry.key()));
+        }
         return keys;
     }
 
@@ -226,6 +255,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         mPage = page;
         markMenu();
         mPageKeys = pageKeys(page);
+        mPageState = pageState();
         mHeroItem = null;
         bindHero(null);
         mRows.setRows(pageRows(page));
@@ -242,7 +272,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
             mEmpty.setText("Loading…");
         } else {
             mEmpty.setText("Nothing to show here.\n\n"
-                    + "Choose catalogs for this page on the web page's Catalogs tab.");
+                    + "Move catalogs into this hub on the web page's Catalogs tab.");
         }
     }
 
@@ -257,12 +287,24 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
 
     @Override
     public void onItemClicked(MetaItem item) {
+        if (item.id.startsWith(HomeRows.LIVE_PREFIX)) {
+            startActivity(new Intent(this, PlayerActivity.class)
+                    .putExtra(PlayerActivity.EXTRA_GROUP_ID, GuideData.ALL_GROUP_ID)
+                    .putExtra(PlayerActivity.EXTRA_CHANNEL_ID,
+                            Long.parseLong(item.id.substring(HomeRows.LIVE_PREFIX.length()))));
+            return;
+        }
         startActivity(DetailsActivity.intent(this, item));
+    }
+
+    private String pageState() {
+        return Profiles.current(this).id + "|" + WatchStore.get(this).version();
     }
 
     private void bindHero(MetaItem item) {
         if (item == mHeroItem && item != null) return;
         mHeroItem = item;
+        mTrailer.show(item);
         if (item == null) {
             Images.fade(mBackdrop, null);
             Images.load(mHeroLogo, null);

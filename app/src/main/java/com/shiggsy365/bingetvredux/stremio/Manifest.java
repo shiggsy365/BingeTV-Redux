@@ -99,11 +99,6 @@ public final class Manifest {
             return id.startsWith("people_search");
         }
 
-        /** Whether the addon wants it on Home: yes unless search-only or it says no. */
-        public boolean defaultOnHome() {
-            return !isSearchOnly() && !Boolean.FALSE.equals(showInHome);
-        }
-
         public boolean supportsPaging() {
             return extra("skip") != null;
         }

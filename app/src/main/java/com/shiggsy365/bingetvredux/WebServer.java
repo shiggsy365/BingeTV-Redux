@@ -67,7 +67,7 @@ import fi.iki.elonen.NanoHTTPD;
  *   GET  /api/connections                each account's connections in use and limit
  *   POST /api/sync
  *
- * Stremio addons: see AddonsApi.
+ * Stremio addons and catalogs: see AddonsApi. Profiles and their settings: see ProfilesApi.
  */
 public class WebServer extends NanoHTTPD {
     private static final String TAG = "WebServer";
@@ -84,6 +84,7 @@ public class WebServer extends NanoHTTPD {
 
     private final Context mContext;
     private final AddonsApi mAddonsApi;
+    private final ProfilesApi mProfilesApi;
     // Category id -> streams, so browsing groups doesn't refetch from the panel every time.
     private final Map<String, List<XtreamClient.Stream>> mStreamCache = new HashMap<>();
     private final Map<String, Long> mStreamCacheTime = new HashMap<>();
@@ -97,6 +98,7 @@ public class WebServer extends NanoHTTPD {
         super(PORT);
         mContext = context.getApplicationContext();
         mAddonsApi = new AddonsApi(mContext);
+        mProfilesApi = new ProfilesApi(mContext);
     }
 
     @Override
@@ -219,6 +221,7 @@ public class WebServer extends NanoHTTPD {
                 return new JSONObject().put("ok", true);
             default: {
                 Object result = mAddonsApi.route(uri, params, body);
+                if (result == null) result = mProfilesApi.route(uri, params, body);
                 if (result == null) throw new IllegalArgumentException("Unknown endpoint " + uri);
                 return result;
             }

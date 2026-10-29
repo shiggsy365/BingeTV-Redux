@@ -157,6 +157,7 @@
 <nav>
   <button data-tab="addons" class="active">Addons</button>
   <button data-tab="catalogs">Catalogs</button>
+  <button data-tab="profiles">Profiles</button>
   <button data-tab="groups">Groups &amp; channels</button>
   <button data-tab="logos">Logos</button>
   <button data-tab="guides">Guides</button>
@@ -188,9 +189,9 @@
   <section id="tab-catalogs" hidden>
     <div class="panel">
       <h2>Hubs</h2>
-      <p class="muted">Each hub is a page on the TV's menu bar, with a row for each catalog shown
-        in it. Hubs without catalogs are left off the menu. Tick "On Home" to show a catalog's
-        row on Home too.</p>
+      <p class="muted">Each hub is a page on the TV's menu bar, with a row for each catalog
+        ticked in it. Home is the first page; the others are left off the menu while they have
+        no catalogs. Move a catalog to another hub with its Hub menu.</p>
       <div class="row wrap" id="hubChips"></div>
       <div id="hubCatalogs"></div>
       <div class="row wrap" style="margin-top:12px">
@@ -207,6 +208,20 @@
       <p class="muted">The TV's Search shows a row of results from each of these, in this order.</p>
       <div id="searchCatalogs"></div>
     </div>
+  </section>
+
+  <section id="tab-profiles" hidden>
+    <div class="panel">
+      <h2>Profiles</h2>
+      <p class="muted">Each profile has its own watch history, settings and MDBList account.
+        With more than one, the TV asks who's watching when the app starts.</p>
+      <div id="profileList"></div>
+      <div class="row" style="margin-top:10px">
+        <input type="text" id="profileNew" placeholder="Name">
+        <button class="btn primary" id="profileAdd">Add a profile</button>
+      </div>
+    </div>
+    <div id="profileSettings"></div>
   </section>
 
   <section id="tab-groups" hidden>
@@ -386,6 +401,7 @@
 
 <script src="/addons.js"></script>
 <script src="/catalogs.js"></script>
+<script src="/profiles.js"></script>
 <script>
 let state = null, categories = {}, selectedGroup = null, channels = [], linkTargets = [];
 let chHideHidden = false;
@@ -459,7 +475,8 @@ async function run(fn) {
 
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
-  ['addons', 'catalogs', 'groups', 'logos', 'guides', 'settings'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
+  ['addons', 'catalogs', 'profiles', 'groups', 'logos', 'guides', 'settings'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
+  if (b.dataset.tab === 'profiles') run(loadProfiles);
   if (b.dataset.tab === 'addons') run(loadAddons);
   if (b.dataset.tab === 'catalogs') run(loadCatalogs);
   if (b.dataset.tab === 'logos') openLogos();
@@ -1229,6 +1246,7 @@ setInterval(() => { if ($('pair').hidden && state) run(async () => { const s = a
 function start() {
   initAddons();
   initCatalogs();
+  initProfiles();
   run(async () => applyState(await api('/api/state')));
   run(loadAddons);
 }

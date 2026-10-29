@@ -20,7 +20,7 @@ import java.util.Collections;
 
 /**
  * TV settings: how to open the web page, where accounts, addons, channels and everything else
- * are set up. Shows the address, a QR code that opens it with the PIN filled in, and the PIN,
+ * are set up, and a check for a newer version. Shows the address, a QR code that opens it with the PIN filled in, and the PIN,
  * which can be changed. "Forget all browsers" makes every browser enter the PIN again.
  */
 public class MainActivity extends Activity {
@@ -63,6 +63,9 @@ public class MainActivity extends Activity {
             WebAuth.forgetBrowsers(this);
             showPairing();
         });
+        findViewById(R.id.updates).setOnClickListener(v -> Updates.check(this, true));
+        ((TextView) findViewById(R.id.version)).setText("BingeTV Redux " + BuildConfig.VERSION_NAME
+                + "  ·  Profile: " + Profiles.current(this).name);
         findViewById(R.id.sync).requestFocus();
     }
 

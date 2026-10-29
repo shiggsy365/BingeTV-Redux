@@ -25,7 +25,6 @@ public class ManifestTest {
         assertFalse(search.isBrowsable());
         assertTrue(search.isSearchableAlone());
         assertTrue(search.isSearchOnly());
-        assertFalse(search.defaultOnHome());
     }
 
     @Test

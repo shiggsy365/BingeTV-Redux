@@ -19,57 +19,44 @@ import com.shiggsy365.bingetvredux.stremio.Streams;
 import com.shiggsy365.bingetvredux.stremio.Subtitles;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
- * Finds the streams for a film or episode from every stream addon, with subtitles alongside.
- * Played straight away, the best stream starts (and the next ones are tried if it fails);
- * chosen, they're listed with their quality tags.
+ * Finds the streams for the film or episode in Playback, from every stream addon, with
+ * subtitles alongside. Played straight away, the best stream starts (a next episode prefers
+ * the source the last one came from), and the next ones are tried if it fails; chosen, they're
+ * listed with their quality tags.
  */
 public class StreamsActivity extends Activity {
-    private static final String EXTRA_TYPE = "type";
-    private static final String EXTRA_ID = "id";
-    private static final String EXTRA_TITLE = "title";
-    private static final String EXTRA_SUBTITLE = "subtitle";
-    private static final String EXTRA_CHOOSE = "choose";
-    private static final String EXTRA_BACKDROP = "backdrop";
+    static final String EXTRA_CHOOSE = "choose";
 
     private TextView mStatus;
     private View mProgress;
     private VerticalGridView mList;
     private final ExecutorService mExecutor = Executors.newFixedThreadPool(2);
-    private List<Stream> mStreams = new ArrayList<>();
-    private List<Subtitles.Track> mSubtitles = new ArrayList<>();
-
-    public static Intent intent(Context context, String type, String videoId, String title,
-            String subtitle, boolean choose, String backdrop) {
-        return new Intent(context, StreamsActivity.class)
-                .putExtra(EXTRA_TYPE, type)
-                .putExtra(EXTRA_ID, videoId)
-                .putExtra(EXTRA_TITLE, title)
-                .putExtra(EXTRA_SUBTITLE, subtitle)
-                .putExtra(EXTRA_CHOOSE, choose)
-                .putExtra(EXTRA_BACKDROP, backdrop);
-    }
+    private Playback mPlayback;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.streams_activity);
+        mPlayback = Playback.current();
+        if (mPlayback == null) {
+            finish();
+            return;
+        }
         mStatus = findViewById(R.id.status);
         mProgress = findViewById(R.id.progress);
         mList = findViewById(R.id.list);
-        Intent in = getIntent();
-        ((TextView) findViewById(R.id.title)).setText(in.getStringExtra(EXTRA_TITLE));
+        ((TextView) findViewById(R.id.title)).setText(mPlayback.title());
         TextView subtitle = findViewById(R.id.subtitle);
-        subtitle.setText(in.getStringExtra(EXTRA_SUBTITLE));
-        subtitle.setVisibility(in.getStringExtra(EXTRA_SUBTITLE) == null ? View.GONE : View.VISIBLE);
-        Images.fade(findViewById(R.id.backdrop), in.getStringExtra(EXTRA_BACKDROP));
+        subtitle.setText(mPlayback.subtitle());
+        subtitle.setVisibility(mPlayback.subtitle() == null ? View.GONE : View.VISIBLE);
+        Images.fade(findViewById(R.id.backdrop), mPlayback.meta.background.isEmpty()
+                ? mPlayback.meta.poster : mPlayback.meta.background);
         mStatus.setText("Finding streams…");
         find();
     }
@@ -81,15 +68,17 @@ public class StreamsActivity extends Activity {
     }
 
     private void find() {
-        String type = getIntent().getStringExtra(EXTRA_TYPE);
-        String id = getIntent().getStringExtra(EXTRA_ID);
+        String type = mPlayback.meta.type;
+        String id = mPlayback.videoId();
         Context app = getApplicationContext();
+        List<String> languages = Settings.subtitleLanguages(app);
+        Streams.Prefs prefs = Settings.streamPrefs(app);
         Future<List<Subtitles.Track>> subtitles = mExecutor.submit(() -> Subtitles.fetch(
-                Stremio.client(app), Stremio.addons(app), type, id, null,
-                Collections.singletonList(Locale.getDefault().getISO3Language())));
+                Stremio.client(app), Stremio.addons(app), type, id, null, languages));
         mExecutor.execute(() -> {
             Streams.Found found = Streams.fetch(Stremio.client(app), Stremio.addons(app), type, id);
-            List<Stream> streams = Streams.prepare(found.streams, new Streams.Prefs());
+            List<Stream> streams = sameSourceFirst(Streams.prepare(found.streams, prefs),
+                    mPlayback.bingeGroup);
             List<Subtitles.Track> subs;
             try {
                 subs = subtitles.get();
@@ -101,10 +90,19 @@ public class StreamsActivity extends Activity {
         });
     }
 
+    /** Streams from the given source group first (for the next episode of a show). */
+    private static List<Stream> sameSourceFirst(List<Stream> streams, String bingeGroup) {
+        if (bingeGroup.isEmpty()) return streams;
+        List<Stream> out = new ArrayList<>();
+        for (Stream s : streams) if (bingeGroup.equals(s.bingeGroup)) out.add(s);
+        for (Stream s : streams) if (!bingeGroup.equals(s.bingeGroup)) out.add(s);
+        return out;
+    }
+
     private void show(List<Stream> streams, List<Subtitles.Track> subtitles, Streams.Found found) {
         if (isDestroyed()) return;
-        mStreams = streams;
-        mSubtitles = subtitles;
+        mPlayback.streams = streams;
+        mPlayback.subtitles = subtitles;
         mProgress.setVisibility(View.GONE);
         if (streams.isEmpty()) {
             mStatus.setText(found.streams.isEmpty()
@@ -119,19 +117,34 @@ public class StreamsActivity extends Activity {
             return;
         }
         mStatus.setText(streams.size() + (streams.size() == 1 ? " stream" : " streams"));
-        mList.setAdapter(new StreamAdapter());
+        mList.setAdapter(new StreamAdapter(this, streams, -1, this::play));
         mList.requestFocus();
     }
 
     private void play(int index) {
-        Intent in = getIntent();
-        Playback.set(new Playback(in.getStringExtra(EXTRA_TITLE), in.getStringExtra(EXTRA_SUBTITLE),
-                in.getStringExtra(EXTRA_TYPE), in.getStringExtra(EXTRA_ID), mStreams, index,
-                mSubtitles));
+        mPlayback.start = index;
         startActivity(new Intent(this, VideoPlayerActivity.class));
     }
 
-    private final class StreamAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+    /** Called with the position of the stream chosen. */
+    interface OnPick {
+        void pick(int index);
+    }
+
+    /** Streams with their addon and quality tags; also the player's stream menu. */
+    static final class StreamAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+        private final Context mContext;
+        private final List<Stream> mStreams;
+        private final int mCurrent;
+        private final OnPick mOnPick;
+
+        StreamAdapter(Context context, List<Stream> streams, int current, OnPick onPick) {
+            mContext = context;
+            mStreams = streams;
+            mCurrent = current;
+            mOnPick = onPick;
+        }
+
         @NonNull
         @Override
         public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -146,18 +159,21 @@ public class StreamsActivity extends Activity {
             LinearLayout tags = view.findViewById(R.id.tags);
             tags.removeAllViews();
             List<String> labels = new ArrayList<>();
+            if (position == mCurrent) labels.add("▶ Playing");
             labels.add(s.addon);
             labels.addAll(Streams.tags(s));
             for (String label : labels) {
-                TextView chip = (TextView) LayoutInflater.from(view.getContext())
+                TextView chip = (TextView) LayoutInflater.from(mContext)
                         .inflate(R.layout.tag_chip, tags, false);
                 chip.setText(label);
-                if (label.equals("Cached")) chip.setBackgroundResource(R.drawable.chip_catchup);
+                if (label.equals("Cached") || label.startsWith("▶")) {
+                    chip.setBackgroundResource(R.drawable.chip_catchup);
+                }
                 tags.addView(chip);
             }
             ((TextView) view.findViewById(R.id.name)).setText(s.name.replace('\n', ' '));
             ((TextView) view.findViewById(R.id.description)).setText(s.title.replace('\n', ' '));
-            view.setOnClickListener(v -> play(position));
+            view.setOnClickListener(v -> mOnPick.pick(holder.getBindingAdapterPosition()));
         }
 
         @Override

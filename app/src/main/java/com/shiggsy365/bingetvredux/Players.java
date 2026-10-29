@@ -4,6 +4,7 @@ import android.content.Context;
 import android.os.Handler;
 
 import androidx.annotation.OptIn;
+import androidx.media3.common.MediaItem;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
@@ -13,6 +14,8 @@ import androidx.media3.exoplayer.audio.AudioRendererEventListener;
 import androidx.media3.exoplayer.audio.AudioSink;
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.exoplayer.source.MergingMediaSource;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 
 import java.util.ArrayList;
 import java.util.Map;
@@ -43,6 +46,22 @@ public final class Players {
         return new ExoPlayer.Builder(context, new RenderersFactory(context))
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(http))
                 .build();
+    }
+
+    /**
+     * A player for a YouTube trailer: its separate video and audio streams played together,
+     * fetched as YouTube's VISIONOS app.
+     */
+    public static ExoPlayer trailer(Context context, Youtube.Streams streams) {
+        DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
+                .setUserAgent(Youtube.AGENT)
+                .setAllowCrossProtocolRedirects(true);
+        ProgressiveMediaSource.Factory factory = new ProgressiveMediaSource.Factory(http);
+        ExoPlayer player = new ExoPlayer.Builder(context, new RenderersFactory(context)).build();
+        player.setMediaSource(new MergingMediaSource(
+                factory.createMediaSource(MediaItem.fromUri(streams.videoUrl)),
+                factory.createMediaSource(MediaItem.fromUri(streams.audioUrl))));
+        return player;
     }
 
     private static final class RenderersFactory extends DefaultRenderersFactory {

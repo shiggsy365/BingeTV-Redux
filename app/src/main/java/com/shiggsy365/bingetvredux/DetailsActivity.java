@@ -8,7 +8,9 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.leanback.widget.BaseGridView;
@@ -25,13 +27,16 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * A film's or show's info page. It opens with what the poster already knew (name, artwork,
- * description) and fills in once the addons answer: details, cast and, for a show, its
- * seasons and episodes. Focusing an episode shows its own details at the top.
+ * A film's or show's info page. It opens with what the poster already knew and fills in once
+ * the addons answer: details, cast and, for a show, its seasons and episodes (with what's been
+ * watched). Play resumes where it was left, or plays the next episode; Start over ignores the
+ * resume point. Films and seasons can be marked watched, and titles added to the MDBList
+ * watchlist.
  */
 public class DetailsActivity extends Activity {
     private static final String EXTRA_TYPE = "type";
@@ -50,6 +55,10 @@ public class DetailsActivity extends Activity {
     private TextView mPeople;
     private TextView mStatus;
     private TextView mPlay;
+    private TextView mStartOver;
+    private TextView mWatched;
+    private TextView mWatchlist;
+    private TextView mTrailer;
     private HorizontalGridView mSeasons;
     private HorizontalGridView mEpisodes;
 
@@ -61,6 +70,9 @@ public class DetailsActivity extends Activity {
     private int mSeason;
     private List<Video> mSeasonEpisodes = new ArrayList<>();
     private final String mToday = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new Date());
+    // What Play plays, and from where.
+    private Video mPlayVideo;
+    private long mPlayFrom;
 
     public static Intent intent(Context context, MetaItem item) {
         return new Intent(context, DetailsActivity.class)
@@ -85,6 +97,10 @@ public class DetailsActivity extends Activity {
         mPeople = findViewById(R.id.people);
         mStatus = findViewById(R.id.status);
         mPlay = findViewById(R.id.play);
+        mStartOver = findViewById(R.id.start_over);
+        mWatched = findViewById(R.id.watched);
+        mWatchlist = findViewById(R.id.watchlist);
+        mTrailer = findViewById(R.id.trailer);
         mSeasons = findViewById(R.id.seasons);
         mEpisodes = findViewById(R.id.episodes);
 
@@ -97,9 +113,15 @@ public class DetailsActivity extends Activity {
         showTitle(in.getStringExtra(EXTRA_NAME), in.getStringExtra(EXTRA_LOGO));
         mDescription.setText(in.getStringExtra(EXTRA_DESCRIPTION));
         mStatus.setText("Loading…");
+        mWatched.setVisibility(View.GONE);
 
-        mPlay.setOnClickListener(v -> play(false));
-        findViewById(R.id.streams).setOnClickListener(v -> play(true));
+        mPlay.setOnClickListener(v -> play(mPlayFrom, !"auto".equals(
+                Settings.string(this, Settings.PLAY_BUTTON))));
+        findViewById(R.id.streams).setOnClickListener(v -> play(mPlayFrom, true));
+        mStartOver.setOnClickListener(v -> play(0, false));
+        mWatched.setOnClickListener(v -> toggleWatched());
+        mWatchlist.setOnClickListener(v -> toggleWatchlist());
+        mTrailer.setOnClickListener(v -> TrailerActivity.start(this, mItem.trailer, mItem.name));
         mPlay.requestFocus();
 
         int margin = getResources().getDimensionPixelSize(R.dimen.screen_margin);
@@ -113,6 +135,18 @@ public class DetailsActivity extends Activity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        // Coming back from the player: progress and watched marks have moved on.
+        if (mItem != null) {
+            updatePlay();
+            updateWatched();
+            RecyclerView.Adapter<?> episodes = mEpisodes.getAdapter();
+            if (episodes != null) episodes.notifyDataSetChanged();
+        }
+    }
+
+    @Override
     protected void onDestroy() {
         mExecutor.shutdownNow();
         super.onDestroy();
@@ -123,7 +157,17 @@ public class DetailsActivity extends Activity {
             try {
                 Metas.Found found = Metas.fetch(Stremio.client(this), Stremio.addons(this),
                         mType, mId);
-                runOnUiThread(() -> show(found.meta));
+                boolean watchlist = false;
+                if (Mdblist.enabled(this)) {
+                    try {
+                        Mdblist.watchlist(this, false);
+                        watchlist = true;
+                    } catch (Mdblist.MdblistException ignored) {
+                        // The button just stays hidden.
+                    }
+                }
+                boolean showWatchlist = watchlist;
+                runOnUiThread(() -> show(found.meta, showWatchlist));
             } catch (StremioException e) {
                 runOnUiThread(() -> {
                     if (!isDestroyed()) mStatus.setText(e.getMessage());
@@ -140,10 +184,9 @@ public class DetailsActivity extends Activity {
         Images.fade(mLogo, logo);
     }
 
-    private void show(MetaItem meta) {
+    private void show(MetaItem meta, boolean watchlist) {
         if (isDestroyed()) return;
         mItem = meta;
-        mStatus.setText(null);
         mStatus.setVisibility(View.GONE);
         if (!meta.background.isEmpty()) Images.fade(mBackdrop, meta.background);
         showTitle(meta.name, meta.logo);
@@ -158,16 +201,23 @@ public class DetailsActivity extends Activity {
         List<MetaItem.Person> directors = meta.people(MetaItem.DIRECTOR);
         if (!directors.isEmpty()) people.add("Directed by " + directors.get(0).name);
         mPeople.setText(String.join("   ·   ", people));
+        mTrailer.setVisibility(meta.trailer.isEmpty() ? View.GONE : View.VISIBLE);
+        mWatchlist.setVisibility(watchlist ? View.VISIBLE : View.GONE);
+        updateWatchlist();
 
         mSeasonNumbers = meta.seasons();
         if (meta.hasSeasons() && !mSeasonNumbers.isEmpty()) {
             mSeasons.setVisibility(View.VISIBLE);
             mEpisodes.setVisibility(View.VISIBLE);
             mSeasons.setAdapter(new SeasonAdapter());
-            showSeason(mSeasonNumbers.get(0));
-            Video first = firstEpisode();
-            mPlay.setText(first == null ? "Play" : "Play " + episodeCode(first));
         }
+        updatePlay();
+        if (meta.hasSeasons() && !mSeasonNumbers.isEmpty()) {
+            showSeason(mPlayVideo != null && mSeasonNumbers.contains(mPlayVideo.season)
+                    ? mPlayVideo.season : mSeasonNumbers.get(0));
+        }
+        mWatched.setVisibility(View.VISIBLE);
+        updateWatched();
     }
 
     /** The details line and description of the title itself. */
@@ -176,39 +226,152 @@ public class DetailsActivity extends Activity {
         mDescription.setText(mItem.description);
     }
 
-    private Video firstEpisode() {
-        for (int season : mSeasonNumbers) {
-            if (season == 0) continue;
-            List<Video> episodes = mItem.episodes(season);
-            if (!episodes.isEmpty()) return episodes.get(0);
-        }
-        return null;
-    }
+    // ---- Play ----
 
-    private void play(boolean choose) {
-        if (mItem != null && mItem.hasSeasons()) {
-            Video first = firstEpisode();
-            if (first != null) playVideo(first, choose);
+    /**
+     * Works out what Play plays: a film or episode part-watched (resumed); for a show, else the
+     * episode after the last one watched, else the first.
+     */
+    private void updatePlay() {
+        WatchStore store = WatchStore.get(this);
+        mPlayVideo = null;
+        mPlayFrom = 0;
+        if (!mItem.hasSeasons()) {
+            WatchStore.Row row = store.row(mItem.id);
+            if (row != null && row.positionMs > 0 && !row.watched) mPlayFrom = row.positionMs;
+            mPlay.setText(mPlayFrom > 0 ? "Resume from " + clock(mPlayFrom) : "Play");
+            mStartOver.setVisibility(mPlayFrom > 0 ? View.VISIBLE : View.GONE);
             return;
         }
-        startActivity(StreamsActivity.intent(this, mType, mId, mItem != null ? mItem.name
-                : mTitle.getText().toString(), null, choose, backdropUrl()));
+        WatchStore.Row resume = store.resumeFor(mItem.id);
+        if (resume != null) mPlayVideo = mItem.video(resume.entry.videoId);
+        if (mPlayVideo != null) {
+            mPlayFrom = resume.positionMs;
+        } else {
+            mPlayVideo = nextUnwatched(store.watchedEpisodes(mItem.id));
+        }
+        if (mPlayVideo == null) {
+            mPlay.setText("Play");
+        } else {
+            mPlay.setText((mPlayFrom > 0 ? "Resume " : "Play ") + episodeCode(mPlayVideo)
+                    + (mPlayFrom > 0 ? " from " + clock(mPlayFrom) : ""));
+        }
+        mStartOver.setVisibility(mPlayFrom > 0 ? View.VISIBLE : View.GONE);
     }
 
-    private void playVideo(Video video, boolean choose) {
-        startActivity(StreamsActivity.intent(this, mType, video.id, mItem.name,
-                episodeCode(video) + (video.title.isEmpty() ? "" : "  " + video.title), choose,
-                backdropUrl()));
+    /** The episode after the furthest one watched (if it has aired), else the first. */
+    private Video nextUnwatched(Set<String> watched) {
+        List<Video> episodes = new ArrayList<>();
+        for (int season : mSeasonNumbers) if (season != 0) episodes.addAll(mItem.episodes(season));
+        int last = -1;
+        for (int i = 0; i < episodes.size(); i++) {
+            Video v = episodes.get(i);
+            if (watched.contains(v.season + ":" + v.episode)) last = i;
+        }
+        for (int i = last + 1; i < episodes.size(); i++) {
+            Video v = episodes.get(i);
+            if (!watched.contains(v.season + ":" + v.episode)) {
+                return v.isReleased(mToday) ? v : null;
+            }
+        }
+        return last < 0 && !episodes.isEmpty() ? episodes.get(0) : null;
     }
 
-    private String backdropUrl() {
-        if (mItem != null && !mItem.background.isEmpty()) return mItem.background;
-        return getIntent().getStringExtra(EXTRA_BACKGROUND);
+    private void play(long from, boolean choose) {
+        if (mItem == null) return;
+        if (mItem.hasSeasons()) {
+            if (mPlayVideo == null) {
+                Toast.makeText(this, "No episode to play next", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            playVideo(mPlayVideo, from, choose);
+            return;
+        }
+        Playback.start(this, new Playback(mItem, null, from, ""), choose);
+    }
+
+    private void playVideo(Video video, long from, boolean choose) {
+        Playback.start(this, new Playback(mItem, video, from,
+                WatchStore.get(this).bingeGroup(mItem.id, 7 * 24 * 3600_000L)), choose);
     }
 
     static String episodeCode(Video v) {
         if (v.season == Video.NONE || v.episode == Video.NONE) return v.title;
         return String.format(Locale.ROOT, "S%d E%d", v.season, v.episode);
+    }
+
+    static String clock(long ms) {
+        long s = ms / 1000;
+        return s >= 3600
+                ? String.format(Locale.ROOT, "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
+                : String.format(Locale.ROOT, "%d:%02d", s / 60, s % 60);
+    }
+
+    // ---- Watched and watchlist ----
+
+    private boolean seasonWatched() {
+        Set<String> watched = WatchStore.get(this).watchedEpisodes(mItem.id);
+        boolean any = false;
+        for (Video v : mSeasonEpisodes) {
+            if (!v.isReleased(mToday)) continue;
+            any = true;
+            if (!watched.contains(v.season + ":" + v.episode)) return false;
+        }
+        return any;
+    }
+
+    private void updateWatched() {
+        if (mItem.hasSeasons()) {
+            mWatched.setText(seasonWatched() ? "Mark " + seasonName(mSeason).toLowerCase(Locale.ROOT)
+                    + " unwatched" : "Mark " + seasonName(mSeason).toLowerCase(Locale.ROOT) + " watched");
+        } else {
+            mWatched.setText(WatchStore.get(this).isWatched(mItem.id) ? "Mark unwatched" : "Mark watched");
+        }
+    }
+
+    private void toggleWatched() {
+        WatchStore store = WatchStore.get(this);
+        List<WatchStore.Entry> entries = new ArrayList<>();
+        boolean watched;
+        if (mItem.hasSeasons()) {
+            watched = !seasonWatched();
+            for (Video v : mSeasonEpisodes) {
+                if (v.isReleased(mToday)) entries.add(new Playback(mItem, v, 0, "").entry(null));
+            }
+        } else {
+            watched = !store.isWatched(mItem.id);
+            entries.add(new Playback(mItem, null, 0, "").entry(null));
+        }
+        store.setWatched(entries, watched);
+        updateWatched();
+        updatePlay();
+        RecyclerView.Adapter<?> episodes = mEpisodes.getAdapter();
+        if (episodes != null) episodes.notifyDataSetChanged();
+    }
+
+    private void updateWatchlist() {
+        mWatchlist.setText(Mdblist.onWatchlist(mItem.id) ? "On watchlist ✓" : "Add to watchlist");
+    }
+
+    private void toggleWatchlist() {
+        boolean add = !Mdblist.onWatchlist(mItem.id);
+        MetaItem item = mItem;
+        mExecutor.execute(() -> {
+            String error = null;
+            try {
+                Mdblist.setOnWatchlist(this, item, add);
+            } catch (Mdblist.MdblistException e) {
+                error = e.getMessage();
+            }
+            String message = error;
+            runOnUiThread(() -> {
+                if (isDestroyed()) return;
+                updateWatchlist();
+                Toast.makeText(this, message != null ? message
+                        : add ? "Added to your watchlist" : "Removed from your watchlist",
+                        Toast.LENGTH_SHORT).show();
+            });
+        });
     }
 
     // ---- Seasons and episodes ----
@@ -217,8 +380,12 @@ public class DetailsActivity extends Activity {
         mSeason = season;
         mSeasonEpisodes = mItem.episodes(season);
         mEpisodes.setAdapter(new EpisodeAdapter());
+        if (mPlayVideo != null && mPlayVideo.season == season) {
+            mEpisodes.setSelectedPosition(Math.max(0, mSeasonEpisodes.indexOf(mPlayVideo)));
+        }
         RecyclerView.Adapter<?> seasons = mSeasons.getAdapter();
         if (seasons != null) seasons.notifyDataSetChanged();
+        updateWatched();
     }
 
     private static String seasonName(int season) {
@@ -274,9 +441,18 @@ public class DetailsActivity extends Activity {
             ((TextView) view.findViewById(R.id.card_subtitle)).setText(released
                     ? v.airDate() : "Coming " + v.airDate());
             view.setAlpha(released ? 1f : 0.5f);
-            card.setOnClickListener(c -> playVideo(v, false));
+            WatchStore.Row row = WatchStore.get(DetailsActivity.this).row(v.id);
+            view.findViewById(R.id.card_watched).setVisibility(
+                    row != null && row.watched ? View.VISIBLE : View.GONE);
+            ProgressBar progress = view.findViewById(R.id.card_progress);
+            boolean partly = row != null && row.positionMs > 0 && !row.watched;
+            progress.setVisibility(partly ? View.VISIBLE : View.GONE);
+            if (partly) progress.setProgress((int) (row.progress() * 1000));
+            long from = partly ? row.positionMs : 0;
+            card.setOnClickListener(c -> playVideo(v, from, !"auto".equals(
+                    Settings.string(DetailsActivity.this, Settings.PLAY_BUTTON))));
             card.setOnLongClickListener(c -> {
-                playVideo(v, true);
+                playVideo(v, from, true);
                 return true;
             });
             card.setOnFocusChangeListener((c, focused) -> {
@@ -284,7 +460,8 @@ public class DetailsActivity extends Activity {
                 c.animate().scaleX(scale).scaleY(scale).setDuration(120).start();
                 if (focused) {
                     mMeta.setText(episodeCode(v) + (v.airDate().isEmpty() ? "" : "  ·  " + v.airDate())
-                            + (v.rating > 0 ? String.format(Locale.ROOT, "  ·  ★ %.1f", v.rating) : ""));
+                            + (v.rating > 0 ? String.format(Locale.ROOT, "  ·  ★ %.1f", v.rating) : "")
+                            + (partly ? "  ·  " + clock(row.durationMs - row.positionMs) + " left" : ""));
                     mDescription.setText(v.overview.isEmpty() ? mItem.description : v.overview);
                 } else if (!mEpisodes.hasFocus()) {
                     showItemDetails();

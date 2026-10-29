@@ -30,7 +30,7 @@ import java.util.concurrent.Future;
  *   POST /api/addons/delete              {key}
  *   POST /api/addons/refresh             {key?} — refetches one manifest, or all of them
  *   GET  /api/catalogs                   hubs with their catalogs, and the search catalogs
- *   POST /api/catalogs/update            {key, shown?, onHome?, name?, hub?, search?,
+ *   POST /api/catalogs/update            {key, shown?, name?, hub?, search?,
  *                                        searchName?, move?: -1|1, moveSearch?: -1|1}
  *   POST /api/hubs                       {name} — a hub of the user's own
  *   POST /api/hubs/update                {id, name} — "" gives a built-in hub its own name
@@ -158,8 +158,7 @@ final class AddonsApi {
                         .put("displayName", e.addon.displayName(e.catalog))
                         .put("customName", p.name)
                         .put("type", e.catalog.type)
-                        .put("shown", p.home)
-                        .put("onHome", e.addon.onHome(e.catalog))
+                        .put("shown", p.shown)
                         .put("hub", hub.id));
             }
             hubs.put(new JSONObject().put("id", hub.id).put("name", hub.name)
@@ -184,7 +183,6 @@ final class AddonsApi {
         store().setCatalogPrefs(key,
                 body.has("shown") ? body.getBoolean("shown") : null,
                 body.has("search") ? body.getBoolean("search") : null,
-                body.has("onHome") ? body.getBoolean("onHome") : null,
                 body.has("name") ? body.getString("name") : null,
                 body.has("searchName") ? body.getString("searchName") : null,
                 body.has("hub") ? body.getString("hub") : null);

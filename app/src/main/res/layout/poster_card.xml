@@ -24,4 +24,29 @@
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
         android:importantForAccessibility="no" />
+
+    <!-- Watched: a tick in the corner. -->
+    <TextView
+        android:id="@+id/card_watched"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="6dp"
+        android:background="@drawable/watched_badge"
+        android:gravity="center"
+        android:text="✓"
+        android:textColor="#FFFFFFFF"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <!-- Part-watched: how far, along the bottom. -->
+    <ProgressBar
+        android:id="@+id/card_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:layout_gravity="bottom"
+        android:max="1000"
+        android:progressDrawable="@drawable/guide_progress"
+        android:visibility="gone" />
 </FrameLayout>

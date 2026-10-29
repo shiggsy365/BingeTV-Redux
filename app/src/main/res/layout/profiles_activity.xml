@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/guide_background"
+    android:gravity="center"
+    android:orientation="vertical">
+
+    <ImageView
+        android:layout_width="wrap_content"
+        android:layout_height="56dp"
+        android:adjustViewBounds="true"
+        android:src="@drawable/logo_redux"
+        android:contentDescription="@string/app_name" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:text="Who's watching?"
+        android:textColor="@color/guide_text"
+        android:textSize="30sp" />
+
+    <androidx.leanback.widget.HorizontalGridView
+        android:id="@+id/profiles"
+        android:layout_width="wrap_content"
+        android:layout_height="220dp"
+        android:layout_marginTop="32dp"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Add and rename profiles on the web page (Settings shows its address)."
+        android:textColor="@color/guide_muted"
+        android:textSize="14sp" />
+</LinearLayout>

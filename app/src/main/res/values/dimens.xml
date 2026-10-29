@@ -9,4 +9,5 @@
     <dimen name="poster_height">168dp</dimen>
     <dimen name="landscape_width">224dp</dimen>
     <dimen name="landscape_height">126dp</dimen>
+    <dimen name="grid_spacing">18dp</dimen>
 </resources>
