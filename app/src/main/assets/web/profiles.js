@@ -18,12 +18,14 @@ const PROFILE_SETTINGS = [
     {key: 'autoplayNext', label: 'Up Next: play the next episode automatically', type: 'check'},
     {key: 'watchedPercent', label: 'Counts as watched at (%)', type: 'number', min: 50, max: 100},
   ]},
-  {title: 'Subtitles', help: 'Subtitles from your subtitle addons, in these languages (codes or names, best first). Empty means the TV\'s language.', fields: [
-    {key: 'subtitleLanguages', label: 'Languages', type: 'text', placeholder: 'e.g. eng, spa'},
+  {title: 'Languages', help: 'The player picks the first audio and subtitle tracks in these languages (codes or names, best first, e.g. "English, French" or "en, fr"). Empty means the TV\'s language. Subtitles built into the video are preferred; otherwise your subtitle addons\' are used.', fields: [
+    {key: 'audioLanguages', label: 'Audio languages', type: 'text', placeholder: 'e.g. English, Japanese'},
+    {key: 'subtitleLanguages', label: 'Subtitle languages', type: 'text', placeholder: 'e.g. eng, spa'},
     {key: 'subtitlesOn', label: 'Show subtitles when a video starts', type: 'check'},
   ]},
   {title: 'Home rows', help: 'Rows at the top of Home, before the Home hub\'s catalogs.', fields: [
     {key: 'rowContinue', label: 'Continue Watching', type: 'check'},
+    {key: 'continueWithNextUp', label: 'Continue Watching includes the next episode of shows you\'re watching (one row; Next Up is then left out)', type: 'check'},
     {key: 'rowNextUp', label: 'Next Up (the next episode of shows you\'re watching)', type: 'check'},
     {key: 'rowWatchlist', label: 'Watchlist (MDBList)', type: 'check'},
     {key: 'rowOnNow', label: 'On Now (live TV)', type: 'check'},
@@ -40,9 +42,25 @@ const PROFILE_SETTINGS = [
   ]},
 ];
 
+let avatarTarget = null;
+
+/** A profile's picture: square-cropped and shrunk on the TV. */
+async function uploadAvatar(id, file) {
+  if (!file || !file.type.startsWith('image/')) { toast("That isn't an image file"); return; }
+  await run(async () => {
+    const res = await fetch('/api/profiles/avatar?id=' + encodeURIComponent(id),
+        {method: 'POST', headers: {'Content-Type': file.type}, body: file});
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    toast('Picture saved');
+    await loadProfiles();
+  });
+}
+
 function initProfiles() {
   if (profilesReady) return;
   profilesReady = true;
+  $('avatarFile').onchange = e => { if (avatarTarget) uploadAvatar(avatarTarget, e.target.files[0]); };
   $('profileAdd').onclick = () => run(async () => {
     const name = $('profileNew').value.trim();
     if (!name) { toast('Name the profile first'); return; }
@@ -61,6 +79,8 @@ function initProfiles() {
     const id = btn.closest('[data-id]').dataset.id;
     const p = profileData.profiles.find(x => x.id === id);
     if (btn.dataset.act === 'edit') { settingsProfile = id; renderProfileSettings(); }
+    if (btn.dataset.act === 'picture') { avatarTarget = id; $('avatarFile').value = ''; $('avatarFile').click(); }
+    if (btn.dataset.act === 'nopicture') run(async () => showProfiles(await api('/api/profiles/avatar/delete', {id})));
     if (btn.dataset.act === 'remove' && confirm('Remove ' + p.name + ', with its watch history and settings?')) {
       run(async () => showProfiles(await api('/api/profiles/delete', {id})));
     }
@@ -100,9 +120,12 @@ function showProfiles(data) {
   const many = data.profiles.length > 1;
   $('profileList').innerHTML = data.profiles.map(p => `
     <div class="catrow" data-id="${esc(p.id)}">
+      <button class="avatar" data-act="picture" title="Upload a picture">${p.avatar
+          ? `<img src="${esc(p.avatar)}" alt="">` : esc((p.name || '?').charAt(0).toUpperCase())}</button>
       <div class="name"><input type="text" data-rename value="${esc(p.name)}"></div>
       <div class="src muted">${p.current ? 'In use on the TV' : ''}</div>
       <button class="btn${p.id === settingsProfile ? ' primary' : ''}" data-act="edit">Settings</button>
+      ${p.avatar ? '<button class="btn" data-act="nopicture">Remove picture</button>' : ''}
       ${many ? '<button class="btn danger" data-act="remove">Remove</button>' : ''}
     </div>`).join('');
   renderProfileSettings();

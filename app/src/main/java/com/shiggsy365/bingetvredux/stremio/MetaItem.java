@@ -52,6 +52,8 @@ public final class MetaItem {
     public final String defaultVideoId;
     /** IMDb/TMDB/TVDB… ids ("imdb" → "tt0903747"), from the id and any *_id fields. */
     public final Map<String, String> ids;
+    /** For Home's own rows: what to watch ("S1 E4 · Pilot · 12:30 left"); "" otherwise. */
+    public final String subtitle;
 
     public static final class Person {
         public final String name;
@@ -93,6 +95,77 @@ public final class MetaItem {
         JSONObject hints = data.optJSONObject("behaviorHints");
         defaultVideoId = hints == null ? "" : hints.optString("defaultVideoId", "");
         ids = externalIds(id, data);
+        subtitle = "";
+    }
+
+    private MetaItem(MetaItem from, String subtitle, String description) {
+        id = from.id;
+        type = from.type;
+        name = from.name;
+        poster = from.poster;
+        posterShape = from.posterShape;
+        background = from.background;
+        logo = from.logo;
+        this.description = description;
+        releaseInfo = from.releaseInfo;
+        imdbRating = from.imdbRating;
+        genres = from.genres;
+        runtime = from.runtime;
+        people = from.people;
+        trailer = from.trailer;
+        released = from.released;
+        country = from.country;
+        certification = from.certification;
+        // Rows don't need the episodes, and long shows have thousands.
+        videos = new ArrayList<>();
+        defaultVideoId = from.defaultVideoId;
+        ids = from.ids;
+        this.subtitle = subtitle;
+    }
+
+    private MetaItem(MetaItem primary, MetaItem fallback) {
+        id = fallback.id;
+        type = fallback.type;
+        name = or(primary.name, fallback.name);
+        poster = or(primary.poster, fallback.poster);
+        posterShape = primary.poster.isEmpty() ? fallback.posterShape : primary.posterShape;
+        background = or(primary.background, fallback.background);
+        logo = or(primary.logo, fallback.logo);
+        description = or(primary.description, fallback.description);
+        releaseInfo = or(primary.releaseInfo, fallback.releaseInfo);
+        imdbRating = primary.imdbRating > 0 ? primary.imdbRating : fallback.imdbRating;
+        genres = primary.genres.isEmpty() ? fallback.genres : primary.genres;
+        runtime = or(primary.runtime, fallback.runtime);
+        people = primary.people.isEmpty() ? fallback.people : primary.people;
+        trailer = or(primary.trailer, fallback.trailer);
+        released = or(primary.released, fallback.released);
+        country = or(primary.country, fallback.country);
+        certification = or(primary.certification, fallback.certification);
+        // Catalog items don't need the episodes, and long shows have thousands.
+        videos = new ArrayList<>();
+        defaultVideoId = or(primary.defaultVideoId, fallback.defaultVideoId);
+        Map<String, String> merged = new TreeMap<>(fallback.ids);
+        merged.putAll(primary.ids);
+        ids = merged;
+        subtitle = fallback.subtitle;
+    }
+
+    private static String or(String a, String b) {
+        return a != null && !a.isEmpty() ? a : b;
+    }
+
+    /**
+     * This catalog item with another addon's details taking precedence (the user's first
+     * metadata addon), its own filling the gaps. Keeps its own id and type.
+     */
+    public MetaItem preferring(MetaItem primary) {
+        return new MetaItem(primary, this);
+    }
+
+    /** This item for a row of Home's own, with its line about what to watch and a plot. */
+    public MetaItem forRow(String subtitle, String description) {
+        return new MetaItem(this, subtitle, description == null || description.isEmpty()
+                ? this.description : description);
     }
 
     /** A catalog entry, or null for entries that can't be shown. */

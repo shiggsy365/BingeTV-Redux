@@ -76,6 +76,8 @@ public final class CatalogRows {
     }
 
     private static final int PAGE_AHEAD = 8;
+    // A catalog row shows this many at most; "See all" opens the rest.
+    private static final int ROW_MAX = 50;
 
     private final Activity mActivity;
     private final VerticalGridView mGrid;
@@ -87,6 +89,14 @@ public final class CatalogRows {
     private final List<Row> mShown = new ArrayList<>();
     private final RowsAdapter mAdapter = new RowsAdapter();
     private Runnable mOnChanged;
+    // A started show's episodes became known: its poster may now get the watched ribbon.
+    private final Runnable mRedrawBadges = () -> {
+        mHandler.removeCallbacks(this.mRedrawRows);
+        mHandler.postDelayed(this.mRedrawRows, 300);
+    };
+    private final Runnable mRedrawRows = () -> {
+        for (Row r : mAll) if (r.adapter != null) r.adapter.notifyDataSetChanged();
+    };
 
     public CatalogRows(Activity activity, VerticalGridView grid, Listener listener) {
         mActivity = activity;
@@ -98,6 +108,7 @@ public final class CatalogRows {
         grid.setWindowAlignmentOffsetPercent(0f);
         grid.setItemAlignmentOffsetPercent(0f);
         grid.setAdapter(mAdapter);
+        ShowProgress.addListener(mRedrawBadges);
     }
 
     /** Called when rows appear or disappear (e.g. to show "nothing here"). */
@@ -112,6 +123,14 @@ public final class CatalogRows {
         mGrid.scrollToPosition(0);
     }
 
+    /** A random item of the first row that has any; null if none has loaded yet. */
+    public MetaItem randomFirstItem() {
+        for (Row r : mShown) {
+            if (!r.items.isEmpty()) return r.items.get(new java.util.Random().nextInt(r.items.size()));
+        }
+        return null;
+    }
+
     public int shownCount() {
         return mShown.size();
     }
@@ -123,6 +142,7 @@ public final class CatalogRows {
     }
 
     public void destroy() {
+        ShowProgress.removeListener(mRedrawBadges);
         mExecutor.shutdownNow();
         mHandler.removeCallbacksAndMessages(null);
     }
@@ -152,7 +172,10 @@ public final class CatalogRows {
             });
             return;
         }
-        if (row.entry == null || row.loading || (row.loaded && row.nextSkip < 0)) return;
+        if (row.entry == null || row.loading
+                || (row.loaded && (row.nextSkip < 0 || row.items.size() >= ROW_MAX))) {
+            return;
+        }
         boolean first = !row.loaded;
         int skip = first ? 0 : row.nextSkip;
         row.loading = true;
@@ -160,12 +183,23 @@ public final class CatalogRows {
             if (first) {
                 Catalogs.Page cached = Catalogs.peek(Stremio.client(mActivity), row.entry.addon,
                         row.entry.catalog, Collections.emptyMap());
-                if (cached != null) mHandler.post(() -> showPage(row, cached, true, true));
+                if (cached != null) {
+                    Catalogs.Page shown = cached.withItems(
+                            PreferredMetas.fromCache(mActivity, row.entry.addon, cached.items));
+                    mHandler.post(() -> showPage(row, shown, true, true));
+                }
             }
             try {
                 Catalogs.Page page = Catalogs.fetch(Stremio.client(mActivity), row.entry.addon,
                         row.entry.catalog, Collections.emptyMap(), skip, row.pageSize);
-                mHandler.post(() -> showPage(row, page, first, false));
+                Catalogs.Page shown = page.withItems(
+                        PreferredMetas.fromCache(mActivity, row.entry.addon, page.items));
+                mHandler.post(() -> showPage(row, shown, first, false));
+                // Then the first metadata addon's details for items not in the cache yet.
+                if (PreferredMetas.needed(mActivity, row.entry.addon, page.items)) {
+                    List<MetaItem> preferred = PreferredMetas.fetch(mActivity, row.entry.addon, page.items);
+                    mHandler.post(() -> replaceItems(row, preferred));
+                }
             } catch (StremioException e) {
                 mHandler.post(() -> {
                     row.loading = false;
@@ -187,7 +221,8 @@ public final class CatalogRows {
         if (replace && !fromCache && row.loaded && sameItems(row.items, page.items)) return;
         int before = replace ? 0 : row.items.size();
         if (replace) row.items.clear();
-        row.items.addAll(page.items);
+        row.items.addAll(page.items.subList(0, Math.min(page.items.size(),
+                Math.max(0, ROW_MAX - row.items.size()))));
         row.loaded = true;
         if (row.items.isEmpty()) {
             refreshShown();
@@ -196,6 +231,22 @@ public final class CatalogRows {
             // New items go in before the "See all" card.
             else row.adapter.notifyItemRangeInserted(before, row.items.size() - before);
         }
+    }
+
+    /** Swaps in newer details for items already in the row (matched by id). */
+    private void replaceItems(Row row, List<MetaItem> items) {
+        if (mActivity.isDestroyed()) return;
+        java.util.Map<String, MetaItem> byId = new java.util.HashMap<>();
+        for (MetaItem m : items) byId.put(m.id, m);
+        boolean changed = false;
+        for (int i = 0; i < row.items.size(); i++) {
+            MetaItem newer = byId.get(row.items.get(i).id);
+            if (newer != null && newer != row.items.get(i)) {
+                row.items.set(i, newer);
+                changed = true;
+            }
+        }
+        if (changed && row.adapter != null) row.adapter.notifyDataSetChanged();
     }
 
     private void showItems(Row row, List<MetaItem> items) {

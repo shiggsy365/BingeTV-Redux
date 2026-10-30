@@ -37,6 +37,11 @@ public final class Catalogs {
             this.nextSkip = nextSkip;
             this.pageSize = pageSize;
         }
+
+        /** The same page with other items (e.g. with the preferred addon's details). */
+        public Page withItems(List<MetaItem> other) {
+            return new Page(other, nextSkip, pageSize);
+        }
     }
 
     /**
@@ -146,6 +151,11 @@ public final class Catalogs {
             this.entry = entry;
             this.items = items;
             this.error = error;
+        }
+
+        /** The same result with other items. */
+        public SearchResult withItems(List<MetaItem> other) {
+            return new SearchResult(entry, other, error);
         }
     }
 

@@ -97,6 +97,20 @@ public final class Playback {
         return null;
     }
 
+    /** The episode before this one; null for a film or the first episode. */
+    public Video previousEpisode() {
+        if (video == null || video.season == Video.NONE) return null;
+        Video previous = null;
+        for (int season : meta.seasons()) {
+            if (season == 0) continue;
+            for (Video v : meta.episodes(season)) {
+                if (v.id.equals(video.id)) return previous;
+                previous = v;
+            }
+        }
+        return null;
+    }
+
     static synchronized void set(Playback playback) {
         sCurrent = playback;
     }

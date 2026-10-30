@@ -40,6 +40,10 @@ final class ProfilesApi {
                 if (settings != null) Settings.apply(mContext, id, settings);
                 return profiles();
             }
+            case "/api/profiles/avatar/delete":
+                //noinspection ResultOfMethodCallIgnored
+                Profiles.avatarFile(mContext, body.getString("id")).delete();
+                return profiles();
             case "/api/profiles/delete":
                 Profiles.remove(mContext, body.getString("id"));
                 return profiles();
@@ -73,8 +77,10 @@ final class ProfilesApi {
         JSONArray list = new JSONArray();
         String current = Profiles.current(mContext).id;
         for (Profiles.Profile p : Profiles.all(mContext)) {
+            java.io.File avatar = Profiles.avatarFile(mContext, p.id);
             list.put(new JSONObject().put("id", p.id).put("name", p.name)
                     .put("current", p.id.equals(current))
+                    .put("avatar", avatar.exists() ? "/avatars/" + p.id + ".png?v=" + avatar.lastModified() : "")
                     .put("settings", Settings.toJson(mContext, p.id)));
         }
         return new JSONObject().put("profiles", list);

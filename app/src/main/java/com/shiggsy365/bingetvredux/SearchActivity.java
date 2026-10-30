@@ -1,6 +1,8 @@
 package com.shiggsy365.bingetvredux;
 
 import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -24,9 +26,11 @@ import java.util.concurrent.Executors;
 
 /**
  * One search across every search catalog (chosen and ordered on the web page), a row of
- * results for each. Searches as you type, after a pause.
+ * results for each. Searches as you type, after a pause. Opened for a person (from an info
+ * page's cast), it searches their name with the people-search catalogs if there are any.
  */
 public class SearchActivity extends Activity implements CatalogRows.Listener {
+    private static final String EXTRA_PERSON = "person";
     private static final long TYPING_PAUSE_MS = 700;
     private static final int MIN_LENGTH = 2;
 
@@ -38,6 +42,12 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
     private String mSearched = "";
     private int mGeneration;
     private final Runnable mSearch = this::search;
+    private boolean mPerson;
+
+    /** Search for someone's films and shows. */
+    public static Intent personIntent(Context context, String name) {
+        return new Intent(context, SearchActivity.class).putExtra(EXTRA_PERSON, name);
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,6 +69,7 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
 
             @Override
             public void afterTextChanged(Editable s) {
+                if (mPerson && mQuery.hasFocus()) mPerson = false;
                 mHandler.removeCallbacks(mSearch);
                 mHandler.postDelayed(mSearch, TYPING_PAUSE_MS);
             }
@@ -76,7 +87,16 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
             }
             return false;
         });
-        mQuery.requestFocus();
+        String person = getIntent().getStringExtra(EXTRA_PERSON);
+        if (person != null && !person.isEmpty()) {
+            mPerson = true;
+            mQuery.setText(person);
+            mHandler.removeCallbacks(mSearch);
+            search();
+            findViewById(R.id.rows).requestFocus();
+        } else {
+            mQuery.requestFocus();
+        }
     }
 
     @Override
@@ -92,11 +112,18 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
         if (query.length() < MIN_LENGTH || query.equalsIgnoreCase(mSearched)) return;
         mSearched = query;
         int generation = ++mGeneration;
-        List<AddonStore.Entry> entries = Stremio.addons(this).searchCatalogs();
+        List<AddonStore.Entry> entries = searchEntries();
         if (entries.isEmpty()) return;
         mStatus.setText("Searching for “" + query + "”…");
         mExecutor.execute(() -> {
-            List<Catalogs.SearchResult> results = Catalogs.search(Stremio.client(this), entries, query);
+            List<Catalogs.SearchResult> raw = Catalogs.search(Stremio.client(this), entries, query);
+            // Each result with the first metadata addon's details (a Cinemeta search shows
+            // AIOMetadata's posters and text, if it's above Cinemeta).
+            List<Catalogs.SearchResult> results = new ArrayList<>();
+            for (Catalogs.SearchResult r : raw) {
+                results.add(r.items.isEmpty() || !PreferredMetas.needed(this, r.entry.addon, r.items) ? r
+                        : r.withItems(PreferredMetas.fetch(this, r.entry.addon, r.items)));
+            }
             runOnUiThread(() -> {
                 if (isDestroyed() || generation != mGeneration) return;
                 List<CatalogRows.Row> rows = new ArrayList<>();
@@ -110,6 +137,15 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
                 mStatus.setText(found == 0 ? "Nothing found for “" + query + "”" : "");
             });
         });
+    }
+
+    /** The search catalogs; for a person, only the people-search ones if there are any. */
+    private List<AddonStore.Entry> searchEntries() {
+        List<AddonStore.Entry> entries = Stremio.addons(this).searchCatalogs();
+        if (!mPerson) return entries;
+        List<AddonStore.Entry> people = new ArrayList<>();
+        for (AddonStore.Entry e : entries) if (e.catalog.isPeopleSearch()) people.add(e);
+        return people.isEmpty() ? entries : people;
     }
 
     /**

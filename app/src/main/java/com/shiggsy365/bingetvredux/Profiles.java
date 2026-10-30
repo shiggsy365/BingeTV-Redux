@@ -33,6 +33,12 @@ public final class Profiles {
 
     private Profiles() {}
 
+    /** A profile's picture (uploaded on the web page); it may not exist. */
+    public static java.io.File avatarFile(Context context, String id) {
+        return new java.io.File(new java.io.File(context.getApplicationContext().getFilesDir(), "avatars"),
+                id + ".png");
+    }
+
     private static SharedPreferences prefs(Context context) {
         return context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
@@ -98,6 +104,8 @@ public final class Profiles {
         save(context, list);
         WatchStore.delete(context, id);
         context.deleteSharedPreferences(Settings.prefsName(id));
+        //noinspection ResultOfMethodCallIgnored
+        avatarFile(context, id).delete();
         if (current(context).id.equals(id) || get(context, current(context).id) == null) {
             setCurrent(context, list.get(0).id);
         }

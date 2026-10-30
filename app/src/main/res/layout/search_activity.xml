@@ -39,5 +39,7 @@
         android:layout_marginTop="10dp"
         android:clipChildren="false"
         android:clipToPadding="false"
-        android:paddingBottom="48dp" />
+        android:fadingEdgeLength="36dp"
+        android:paddingBottom="48dp"
+        android:requiresFadingEdge="vertical" />
 </LinearLayout>

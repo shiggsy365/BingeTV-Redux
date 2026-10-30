@@ -4,17 +4,22 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.leanback.widget.HorizontalGridView;
 import androidx.leanback.widget.VerticalGridView;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.shiggsy365.bingetvredux.stremio.MetaItem;
 import com.shiggsy365.bingetvredux.stremio.Stream;
+import com.shiggsy365.bingetvredux.stremio.StreamInfo;
 import com.shiggsy365.bingetvredux.stremio.Streams;
 import com.shiggsy365.bingetvredux.stremio.Subtitles;
 
@@ -36,6 +41,14 @@ public class StreamsActivity extends Activity {
     private TextView mStatus;
     private View mProgress;
     private VerticalGridView mList;
+    private HorizontalGridView mFilters;
+    private TextView mFilename;
+    // Tab label and the streams (positions in the list) it shows: All, each addon, each
+    // resolution and Cached, where they narrow things down.
+    private final List<String> mFilterLabels = new ArrayList<>();
+    private final List<List<Integer>> mFilterMembers = new ArrayList<>();
+    private int mFilter;
+    private StreamCards.Adapter mCards;
     private final ExecutorService mExecutor = Executors.newFixedThreadPool(2);
     private Playback mPlayback;
 
@@ -51,13 +64,20 @@ public class StreamsActivity extends Activity {
         mStatus = findViewById(R.id.status);
         mProgress = findViewById(R.id.progress);
         mList = findViewById(R.id.list);
-        ((TextView) findViewById(R.id.title)).setText(mPlayback.title());
-        TextView subtitle = findViewById(R.id.subtitle);
-        subtitle.setText(mPlayback.subtitle());
-        subtitle.setVisibility(mPlayback.subtitle() == null ? View.GONE : View.VISIBLE);
-        Images.fade(findViewById(R.id.backdrop), mPlayback.meta.background.isEmpty()
-                ? mPlayback.meta.poster : mPlayback.meta.background);
-        mStatus.setText("Finding streams…");
+        mFilters = findViewById(R.id.filters);
+        mFilename = findViewById(R.id.filename);
+        MetaItem meta = mPlayback.meta;
+        boolean hasLogo = !meta.logo.isEmpty();
+        for (int[] ids : new int[][]{{R.id.searching_logo, R.id.searching_title}, {R.id.logo, R.id.title}}) {
+            ImageView logo = findViewById(ids[0]);
+            TextView title = findViewById(ids[1]);
+            title.setText(mPlayback.title());
+            title.setVisibility(hasLogo ? View.GONE : View.VISIBLE);
+            logo.setVisibility(hasLogo ? View.VISIBLE : View.GONE);
+            Images.fade(logo, meta.logo);
+        }
+        Images.fade(findViewById(R.id.backdrop), meta.background.isEmpty() ? meta.poster : meta.background);
+        mStatus.setText("Searching for streams…");
         find();
     }
 
@@ -116,69 +136,110 @@ public class StreamsActivity extends Activity {
             finish();
             return;
         }
-        mStatus.setText(streams.size() + (streams.size() == 1 ? " stream" : " streams"));
-        mList.setAdapter(new StreamAdapter(this, streams, -1, this::play));
+        showList(streams);
+    }
+
+    /** The cards in two columns, under tabs that filter them. */
+    private void showList(List<Stream> streams) {
+        findViewById(R.id.searching).setVisibility(View.GONE);
+        findViewById(R.id.page).setVisibility(View.VISIBLE);
+        ((View) findViewById(R.id.shade)).setBackgroundColor(0xCC0E0F14);
+        String count = streams.size() + (streams.size() == 1 ? " stream" : " streams");
+        String subtitle = mPlayback.subtitle();
+        ((TextView) findViewById(R.id.subtitle)).setText(subtitle == null ? count : subtitle + "  ·  " + count);
+        List<StreamInfo> infos = new ArrayList<>();
+        for (Stream s : streams) infos.add(StreamInfo.of(s));
+        buildFilters(streams, infos);
+        mCards = new StreamCards.Adapter(streams, infos, -1, this::play,
+                info -> mFilename.setText(info.filename.isEmpty() ? info.details.replace('\n', ' ') : info.filename));
+        mList.setNumColumns(2);
+        mList.setHorizontalSpacing(Math.round(8 * getResources().getDisplayMetrics().density));
+        mList.setVerticalSpacing(Math.round(10 * getResources().getDisplayMetrics().density));
+        mList.setAdapter(mCards);
+        // Up from the top row goes to the tabs (the grid keeps Up to itself otherwise).
+        mList.setOnKeyInterceptListener(event -> {
+            if (event.getKeyCode() != KeyEvent.KEYCODE_DPAD_UP || mList.getSelectedPosition() >= 2
+                    || mFilterLabels.size() < 2) {
+                return false;
+            }
+            if (event.getAction() == KeyEvent.ACTION_DOWN) mFilters.requestFocus();
+            return true;
+        });
+        mFilters.setAdapter(new FilterAdapter());
+        showFilter(0);
         mList.requestFocus();
+    }
+
+    private void buildFilters(List<Stream> streams, List<StreamInfo> infos) {
+        List<Integer> every = new ArrayList<>();
+        for (int i = 0; i < streams.size(); i++) every.add(i);
+        mFilterLabels.clear();
+        mFilterMembers.clear();
+        mFilterLabels.add("All");
+        mFilterMembers.add(every);
+        java.util.LinkedHashSet<String> addons = new java.util.LinkedHashSet<>();
+        for (Stream s : streams) addons.add(s.addon);
+        for (String addon : addons) {
+            List<Integer> members = new ArrayList<>();
+            for (int i : every) if (streams.get(i).addon.equals(addon)) members.add(i);
+            addFilter(addon, members, every.size());
+        }
+        for (String res : StreamInfo.RESOLUTION_ORDER) {
+            List<Integer> members = new ArrayList<>();
+            for (int i : every) if (infos.get(i).resolution.equals(res)) members.add(i);
+            addFilter(StreamInfo.LABELS.get(res), members, every.size());
+        }
+        List<Integer> cached = new ArrayList<>();
+        for (int i : every) if (infos.get(i).cached) cached.add(i);
+        addFilter("Cached", cached, every.size());
+    }
+
+    private void addFilter(String label, List<Integer> members, int all) {
+        if (members.isEmpty() || members.size() == all) return;
+        mFilterLabels.add(label);
+        mFilterMembers.add(members);
+    }
+
+    private void showFilter(int index) {
+        mFilter = index;
+        mCards.show(mFilterMembers.get(index));
+        RecyclerView.Adapter<?> tabs = mFilters.getAdapter();
+        if (tabs != null) tabs.notifyDataSetChanged();
+    }
+
+    private final class FilterAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+        @NonNull
+        @Override
+        public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            return new RecyclerView.ViewHolder(LayoutInflater.from(parent.getContext())
+                    .inflate(R.layout.season_tab, parent, false)) {};
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
+            TextView tab = (TextView) holder.itemView;
+            tab.setText(mFilterLabels.get(position) + "  " + mFilterMembers.get(position).size());
+            boolean current = position == mFilter;
+            tab.setSelected(current);
+            tab.setTextColor(current ? 0xFFFFFFFF : 0xFFA0A0A0);
+            tab.setOnClickListener(v -> {
+                int at = holder.getBindingAdapterPosition();
+                if (at != mFilter) {
+                    // After the click, not during it: the tabs are redrawn.
+                    v.post(() -> showFilter(at));
+                }
+                mList.requestFocus();
+            });
+        }
+
+        @Override
+        public int getItemCount() {
+            return mFilterLabels.size();
+        }
     }
 
     private void play(int index) {
         mPlayback.start = index;
         startActivity(new Intent(this, VideoPlayerActivity.class));
-    }
-
-    /** Called with the position of the stream chosen. */
-    interface OnPick {
-        void pick(int index);
-    }
-
-    /** Streams with their addon and quality tags; also the player's stream menu. */
-    static final class StreamAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
-        private final Context mContext;
-        private final List<Stream> mStreams;
-        private final int mCurrent;
-        private final OnPick mOnPick;
-
-        StreamAdapter(Context context, List<Stream> streams, int current, OnPick onPick) {
-            mContext = context;
-            mStreams = streams;
-            mCurrent = current;
-            mOnPick = onPick;
-        }
-
-        @NonNull
-        @Override
-        public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            return new RecyclerView.ViewHolder(LayoutInflater.from(parent.getContext())
-                    .inflate(R.layout.stream_choice, parent, false)) {};
-        }
-
-        @Override
-        public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
-            Stream s = mStreams.get(position);
-            View view = holder.itemView;
-            LinearLayout tags = view.findViewById(R.id.tags);
-            tags.removeAllViews();
-            List<String> labels = new ArrayList<>();
-            if (position == mCurrent) labels.add("▶ Playing");
-            labels.add(s.addon);
-            labels.addAll(Streams.tags(s));
-            for (String label : labels) {
-                TextView chip = (TextView) LayoutInflater.from(mContext)
-                        .inflate(R.layout.tag_chip, tags, false);
-                chip.setText(label);
-                if (label.equals("Cached") || label.startsWith("▶")) {
-                    chip.setBackgroundResource(R.drawable.chip_catchup);
-                }
-                tags.addView(chip);
-            }
-            ((TextView) view.findViewById(R.id.name)).setText(s.name.replace('\n', ' '));
-            ((TextView) view.findViewById(R.id.description)).setText(s.title.replace('\n', ' '));
-            view.setOnClickListener(v -> mOnPick.pick(holder.getBindingAdapterPosition()));
-        }
-
-        @Override
-        public int getItemCount() {
-            return mStreams.size();
-        }
     }
 }

@@ -101,6 +101,10 @@ public class GuideActivity extends Activity {
     private float mPxPerMs;
 
     private ExoPlayer mPreviewPlayer;
+
+    // Puts the TV in the display mode that suits the video (see FrameRateMatcher).
+
+    private FrameRateMatcher mFrameRate;
     private long mPreviewChannelId = -1;
     private int mPreviewSource;
 
@@ -124,6 +128,8 @@ public class GuideActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Live TV's display mode now, while the screen opens, not when its video starts.
+        FrameRateMatcher.prepare(this, FrameRateMatcher.LIVE);
         setContentView(R.layout.guide_activity);
         WebServerService.start(this);
         mTimeFormat = android.text.format.DateFormat.getTimeFormat(this);
@@ -552,6 +558,7 @@ public class GuideActivity extends Activity {
         mPreviewSource = source;
         Connections.using(source);
         mPreviewPlayer = Players.build(this);
+        mFrameRate = FrameRateMatcher.attach(this, mPreviewPlayer, FrameRateMatcher.LIVE);
         mPreview.setPlayer(mPreviewPlayer);
         mPreviewPlayer.addListener(new Player.Listener() {
             @Override
@@ -570,6 +577,10 @@ public class GuideActivity extends Activity {
         mPreview.setVisibility(View.INVISIBLE);
         if (mPreviewPlayer != null) {
             mPreview.setPlayer(null);
+            if (mFrameRate != null) {
+                mFrameRate.release();
+                mFrameRate = null;
+            }
             mPreviewPlayer.release();
             mPreviewPlayer = null;
             Connections.released(mPreviewSource);

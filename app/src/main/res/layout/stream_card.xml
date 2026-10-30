@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A stream: its title line (debrid tag, addon, resolution), quality, audio and source lines,
+     and its badges. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="111dp"
+    android:layout_marginEnd="8dp"
+    android:background="@drawable/stream_card"
+    android:clickable="true"
+    android:focusable="true"
+    android:orientation="vertical"
+    android:paddingStart="13dp"
+    android:paddingTop="7dp"
+    android:paddingEnd="13dp">
+
+    <TextView
+        android:id="@+id/card_title"
+        android:layout_width="match_parent"
+        android:layout_height="21dp"
+        android:ellipsize="end"
+        android:gravity="center_vertical"
+        android:singleLine="true"
+        android:textColor="#FFFFFFFF"
+        android:textSize="16sp" />
+
+    <TextView
+        android:id="@+id/card_line1"
+        style="@style/StreamCardLine"
+        android:layout_marginTop="2dp" />
+
+    <TextView
+        android:id="@+id/card_line2"
+        style="@style/StreamCardLine" />
+
+    <TextView
+        android:id="@+id/card_line3"
+        style="@style/StreamCardLine" />
+
+    <LinearLayout
+        android:id="@+id/card_badges"
+        android:layout_width="match_parent"
+        android:layout_height="17dp"
+        android:layout_marginTop="5dp"
+        android:orientation="horizontal" />
+</LinearLayout>

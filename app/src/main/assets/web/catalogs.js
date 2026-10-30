@@ -23,6 +23,14 @@ function initCatalogs() {
     showCatalogs(data);
     toast('Added ' + name + '. Move catalogs into it with their Hub menus.');
   });
+  $('hubIcons').onclick = e => {
+    const chip = e.target.closest('[data-icon]');
+    if (!chip) return;
+    run(async () => {
+      showCatalogs(await api('/api/hubs/update', {id: currentHub, icon: chip.dataset.icon}));
+      toast('Icon changed');
+    });
+  };
   $('hubRename').onclick = () => run(async () => {
     showCatalogs(await api('/api/hubs/update', {id: currentHub, name: $('hubName').value.trim()}));
     toast('Renamed');
@@ -73,6 +81,10 @@ function renderCatalogs() {
         <span class="muted">${h.catalogs.filter(c => c.shown).length}</span></button>`).join('');
   const hub = hubs.find(h => h.id === currentHub);
   $('hubName').value = hub.name;
+  // The same shapes the TV draws.
+  $('hubIcons').innerHTML = (catalogData.icons || []).map(i =>
+      `<button class="chip icon-chip${i.key === hub.icon ? ' active' : ''}" data-icon="${esc(i.key)}"
+        title="${esc(i.label)}"><svg viewBox="0 0 24 24"><path d="${esc(i.path)}"/></svg></button>`).join('');
   $('hubDelete').hidden = !hub.custom;
   const options = hubs.map(h => `<option value="${esc(h.id)}">${esc(h.name)}</option>`).join('');
   if (!hub.catalogs.length) {

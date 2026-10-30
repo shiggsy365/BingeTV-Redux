@@ -1,30 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A whole catalog as a grid, with its genre (or other) filter. -->
+<!-- A whole catalog as a grid: the focused title's logo and description at the top left, the
+     filter (usually genre) as a drop-down at the top right. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/guide_background"
     android:clipChildren="false"
     android:orientation="vertical"
-    android:paddingTop="32dp">
+    android:paddingTop="24dp">
 
-    <TextView
-        android:id="@+id/title"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/screen_margin"
-        android:fontFamily="sans-serif-medium"
-        android:textColor="@color/guide_text"
-        android:textSize="28sp" />
-
-    <androidx.leanback.widget.HorizontalGridView
-        android:id="@+id/filters"
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:clipToPadding="false"
+        android:layout_height="132dp"
         android:paddingStart="@dimen/screen_margin"
-        android:paddingEnd="@dimen/screen_margin"
-        android:visibility="gone" />
+        android:paddingEnd="@dimen/screen_margin">
+
+        <LinearLayout
+            android:layout_width="520dp"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="56dp">
+
+                <ImageView
+                    android:id="@+id/focused_logo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:adjustViewBounds="true"
+                    android:maxWidth="320dp"
+                    android:scaleType="fitStart"
+                    android:importantForAccessibility="no" />
+
+                <TextView
+                    android:id="@+id/focused_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:gravity="center_vertical"
+                    android:maxLines="2"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="22sp" />
+            </FrameLayout>
+
+            <com.shiggsy365.bingetvredux.ScrollingText
+                android:id="@+id/focused_desc"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:ellipsize="end"
+                android:lineSpacingExtra="1dp"
+                android:maxLines="3"
+                android:textColor="#FFEEEEEE"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <!-- the filter: its choice, opening a list of the options -->
+        <TextView
+            android:id="@+id/filter"
+            style="@style/MenuItem"
+            android:layout_gravity="top|end"
+            android:layout_marginEnd="0dp"
+            android:drawablePadding="6dp"
+            android:visibility="gone" />
+    </FrameLayout>
 
     <FrameLayout
         android:layout_width="match_parent"

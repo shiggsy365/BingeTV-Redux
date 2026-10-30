@@ -1,8 +1,10 @@
 package com.shiggsy365.bingetvredux;
 
 import android.content.Context;
+import android.util.Log;
 
 import com.shiggsy365.bingetvredux.stremio.AddonStore;
+import com.shiggsy365.bingetvredux.stremio.RequestLog;
 import com.shiggsy365.bingetvredux.stremio.ResponseCache;
 import com.shiggsy365.bingetvredux.stremio.StremioClient;
 
@@ -16,6 +18,12 @@ public final class Stremio {
 
     private Stremio() {}
 
+    /** Sends every addon and MDBList request to logcat (tag "Net"), for measuring. */
+    static void logRequests() {
+        RequestLog.setSink((method, url, status, bytes, ms) -> Log.d("Net", method + " " + status
+                + " " + bytes + "B " + ms + "ms [" + Thread.currentThread().getName() + "] " + url));
+    }
+
     public static synchronized AddonStore addons(Context context) {
         if (sAddons == null) {
             sAddons = new AddonStore(new File(context.getApplicationContext().getFilesDir(),
@@ -26,6 +34,7 @@ public final class Stremio {
 
     public static synchronized StremioClient client(Context context) {
         if (sClient == null) {
+            logRequests();
             sClient = new StremioClient(TIMEOUT_MS, new ResponseCache(
                     new File(context.getApplicationContext().getCacheDir(), "stremio")));
         }

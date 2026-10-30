@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Episode card: darkens the lower half of the still, where its text is. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:centerY="0.5"
+        android:startColor="#00000000"
+        android:centerColor="#9B000000"
+        android:endColor="#EB000000" />
+</shape>

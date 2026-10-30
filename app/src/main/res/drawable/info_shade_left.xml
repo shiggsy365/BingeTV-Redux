@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Info page: darkens the artwork towards the left, where the text is (as BingeTV's skin). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="0"
+        android:centerX="0.52"
+        android:startColor="#EB000000"
+        android:centerColor="#AF000000"
+        android:endColor="#00000000" />
+</shape>

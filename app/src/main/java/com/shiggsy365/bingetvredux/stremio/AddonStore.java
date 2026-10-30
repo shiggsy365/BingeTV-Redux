@@ -165,11 +165,14 @@ public final class AddonStore {
         public final String id;
         public final String name;
         public final boolean custom;
+        /** The menu bar icon chosen on the web page; "" for the hub's usual one. */
+        public final String icon;
 
-        HubInfo(String id, String name, boolean custom) {
+        HubInfo(String id, String name, boolean custom, String icon) {
             this.id = id;
             this.name = name;
             this.custom = custom;
+            this.icon = icon == null ? "" : icon;
         }
     }
 
@@ -181,6 +184,8 @@ public final class AddonStore {
     private final LinkedHashMap<String, String> mCustomHubs = new LinkedHashMap<>();
     // Built-in hub -> the user's name for it.
     private final Map<String, String> mHubNames = new HashMap<>();
+    // Hub id -> the menu bar icon chosen for it.
+    private final Map<String, String> mHubIcons = new HashMap<>();
 
     public AddonStore(File file) {
         mFile = file;
@@ -219,6 +224,11 @@ public final class AddonStore {
                 for (String hub : HUBS) {
                     if (!names.optString(hub).isEmpty()) mHubNames.put(hub, names.optString(hub));
                 }
+            }
+            JSONObject icons = data.optJSONObject("hubIcons");
+            for (java.util.Iterator<String> it = icons == null ? null : icons.keys(); it != null && it.hasNext(); ) {
+                String hub = it.next();
+                if (!icons.optString(hub).isEmpty()) mHubIcons.put(hub, icons.optString(hub));
             }
             mSearchOrder.addAll(Manifest.strings(data.optJSONArray("searchOrder")));
             mHubOrder.addAll(Manifest.strings(data.optJSONArray("hubOrder")));
@@ -263,7 +273,8 @@ public final class AddonStore {
                     .put("searchOrder", new JSONArray(mSearchOrder))
                     .put("hubOrder", new JSONArray(mHubOrder))
                     .put("customHubs", hubs)
-                    .put("hubNames", new JSONObject(mHubNames));
+                    .put("hubNames", new JSONObject(mHubNames))
+                    .put("hubIcons", new JSONObject(mHubIcons));
             File tmp = new File(mFile.getPath() + ".tmp");
             File dir = mFile.getParentFile();
             if (dir != null) //noinspection ResultOfMethodCallIgnored
@@ -296,6 +307,7 @@ public final class AddonStore {
         mHubOrder.clear();
         mCustomHubs.clear();
         mHubNames.clear();
+        mHubIcons.clear();
         load();
     }
 
@@ -420,10 +432,10 @@ public final class AddonStore {
         List<HubInfo> out = new ArrayList<>();
         for (String hub : HUBS) {
             String name = mHubNames.get(hub);
-            out.add(new HubInfo(hub, name != null ? name : builtInHubName(hub), false));
+            out.add(new HubInfo(hub, name != null ? name : builtInHubName(hub), false, mHubIcons.get(hub)));
         }
         for (Map.Entry<String, String> h : mCustomHubs.entrySet()) {
-            out.add(new HubInfo(h.getKey(), h.getValue(), true));
+            out.add(new HubInfo(h.getKey(), h.getValue(), true, mHubIcons.get(h.getKey())));
         }
         return out;
     }
@@ -463,11 +475,20 @@ public final class AddonStore {
         save();
     }
 
+    /** Sets a hub's menu bar icon; "" gives it its usual one. */
+    public synchronized void setHubIcon(String hub, String icon) throws StremioException {
+        if (!hubIds().contains(hub)) throw new StremioException("There's no hub " + hub);
+        if (icon == null || icon.isEmpty()) mHubIcons.remove(hub);
+        else mHubIcons.put(hub, icon);
+        save();
+    }
+
     /** Removes one of the user's hubs; its catalogs go back to their usual hubs. */
     public synchronized void removeHub(String hub) throws StremioException {
         if (mCustomHubs.remove(hub) == null) {
             throw new StremioException("Only hubs you made can be removed");
         }
+        mHubIcons.remove(hub);
         for (Addon a : mAddons) {
             for (CatalogPrefs p : a.catalogPrefs.values()) if (p.hub.equals(hub)) p.hub = "";
         }

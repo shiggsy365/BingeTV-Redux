@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A filter option: red when focused, a soft fill for the one chosen. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true" android:drawable="@color/guide_accent" />
+    <item android:state_selected="true" android:drawable="@color/guide_accent" />
+    <item android:state_activated="true" android:drawable="@color/guide_track" />
+    <item android:drawable="@android:color/transparent" />
+</selector>

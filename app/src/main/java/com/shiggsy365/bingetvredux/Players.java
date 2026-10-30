@@ -8,6 +8,7 @@ import androidx.media3.common.MediaItem;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.Renderer;
 import androidx.media3.exoplayer.audio.AudioRendererEventListener;
@@ -56,8 +57,12 @@ public final class Players {
         DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
                 .setUserAgent(Youtube.AGENT)
                 .setAllowCrossProtocolRedirects(true);
-        ProgressiveMediaSource.Factory factory = new ProgressiveMediaSource.Factory(http);
-        ExoPlayer player = new ExoPlayer.Builder(context, new RenderersFactory(context)).build();
+        // Fetched in ranged pieces (see YoutubeChunks), and with 5 s buffered before it starts.
+        ProgressiveMediaSource.Factory factory = new ProgressiveMediaSource.Factory(new YoutubeChunks.Factory(http));
+        ExoPlayer player = new ExoPlayer.Builder(context, new RenderersFactory(context))
+                .setLoadControl(new DefaultLoadControl.Builder()
+                        .setBufferDurationsMs(30_000, 120_000, 5_000, 10_000).build())
+                .build();
         player.setMediaSource(new MergingMediaSource(
                 factory.createMediaSource(MediaItem.fromUri(streams.videoUrl)),
                 factory.createMediaSource(MediaItem.fromUri(streams.audioUrl))));

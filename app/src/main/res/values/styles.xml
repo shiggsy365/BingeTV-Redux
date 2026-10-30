@@ -59,6 +59,39 @@
         <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 
+    <!-- A stream card's text line ("Quality: BluRay | HEVC"). -->
+    <style name="StreamCardLine" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">18dp</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:textColor">#FFD0D0D0</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+
+    <!-- Info page: a round icon button after Play. -->
+    <style name="InfoRoundButton" parent="">
+        <item name="android:layout_width">33dp</item>
+        <item name="android:layout_height">33dp</item>
+        <item name="android:layout_marginStart">9dp</item>
+        <item name="android:background">@drawable/info_round</item>
+        <item name="android:focusable">true</item>
+        <item name="android:padding">8dp</item>
+        <item name="android:scaleType">fitCenter</item>
+    </style>
+
+    <!-- Info page: a section's heading (Seasons, Cast, Similar). -->
+    <style name="InfoHeading" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">30dp</item>
+        <item name="android:layout_marginStart">40dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:textColor">#FFFFFFFF</item>
+        <item name="android:textSize">19sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
     <!-- Big action buttons on the info page. -->
     <style name="ActionButton" parent="OsdButton">
         <item name="android:paddingStart">22dp</item>

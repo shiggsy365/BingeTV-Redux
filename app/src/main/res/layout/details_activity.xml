@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A film's or show's info page. -->
+<!-- A film's or show's info page, laid out as BingeTV's: a centred column over the left of the
+     artwork (logo, facts, genres, plot), a row of buttons, then seasons and episodes, cast and
+     similar titles, the page scrolling as the focus moves down. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/guide_background"
-    android:clipChildren="false">
+    android:background="@color/guide_background">
 
     <ImageView
         android:id="@+id/backdrop"
@@ -16,151 +17,274 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@drawable/backdrop_shade" />
+        android:background="@drawable/info_shade_left" />
 
     <View
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@drawable/hero_fade_bottom" />
+        android:background="@drawable/info_shade_bottom" />
 
-    <LinearLayout
+    <ScrollView
+        android:id="@+id/page"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clipChildren="false"
-        android:orientation="vertical"
-        android:paddingTop="40dp"
-        android:paddingBottom="24dp">
+        android:fillViewport="true"
+        android:overScrollMode="never"
+        android:scrollbars="none">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingStart="@dimen/screen_margin"
-            android:paddingEnd="@dimen/screen_margin">
+            android:clipChildren="false"
+            android:orientation="vertical">
 
-            <ImageView
-                android:id="@+id/logo"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:adjustViewBounds="true"
-                android:maxHeight="110dp"
-                android:maxWidth="480dp"
-                android:scaleType="fitStart"
-                android:importantForAccessibility="no" />
+            <!-- ======== header -->
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="345dp"
+                android:clipChildren="false">
 
-            <TextView
-                android:id="@+id/title"
-                android:layout_width="640dp"
-                android:layout_height="wrap_content"
-                android:fontFamily="sans-serif-medium"
-                android:maxLines="2"
-                android:ellipsize="end"
-                android:textColor="@color/guide_text"
-                android:textSize="36sp" />
+                <ImageView
+                    android:id="@+id/logo"
+                    android:layout_width="316dp"
+                    android:layout_height="75dp"
+                    android:layout_marginStart="40dp"
+                    android:layout_marginTop="50dp"
+                    android:scaleType="fitCenter"
+                    android:importantForAccessibility="no" />
 
-            <TextView
-                android:id="@+id/meta"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:textColor="@color/guide_muted"
-                android:textSize="15sp" />
+                <TextView
+                    android:id="@+id/title"
+                    android:layout_width="316dp"
+                    android:layout_height="75dp"
+                    android:layout_marginStart="40dp"
+                    android:layout_marginTop="50dp"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:gravity="center"
+                    android:maxLines="2"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="26sp" />
 
-            <TextView
-                android:id="@+id/description"
-                android:layout_width="680dp"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:ellipsize="end"
-                android:lineSpacingExtra="2dp"
-                android:maxLines="4"
-                android:textColor="@color/guide_text"
-                android:textSize="16sp" />
+                <LinearLayout
+                    android:layout_width="316dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="40dp"
+                    android:layout_marginTop="131dp"
+                    android:gravity="center_horizontal"
+                    android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/people"
-                android:layout_width="680dp"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:ellipsize="end"
-                android:maxLines="2"
-                android:textColor="@color/guide_muted"
-                android:textSize="14sp" />
+                    <!-- While an episode has focus: which one -->
+                    <TextView
+                        android:id="@+id/subtitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="7dp"
+                        android:ellipsize="end"
+                        android:gravity="center"
+                        android:singleLine="true"
+                        android:textColor="#FFFFFFFF"
+                        android:textSize="17sp"
+                        android:visibility="gone" />
 
+                    <LinearLayout
+                        android:id="@+id/facts"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal" />
+
+                    <LinearLayout
+                        android:id="@+id/genres"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="7dp"
+                        android:orientation="horizontal" />
+
+                    <com.shiggsy365.bingetvredux.ScrollingText
+                        android:id="@+id/description"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="7dp"
+                        android:ellipsize="end"
+                        android:lineSpacingExtra="1dp"
+                        android:maxLines="5"
+                        android:textColor="#FFEEEEEE"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/status"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="7dp"
+                        android:textColor="@color/guide_muted"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <!-- the buttons: Play, then round ones; the hint names the focused round one -->
+                <LinearLayout
+                    android:id="@+id/actions"
+                    android:layout_width="wrap_content"
+                    android:layout_height="33dp"
+                    android:layout_marginStart="40dp"
+                    android:layout_marginTop="306dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/play"
+                        android:layout_width="267dp"
+                        android:layout_height="33dp"
+                        android:background="@drawable/info_pill"
+                        android:ellipsize="end"
+                        android:focusable="true"
+                        android:fontFamily="sans-serif-medium"
+                        android:gravity="center"
+                        android:paddingStart="16dp"
+                        android:paddingEnd="16dp"
+                        android:singleLine="true"
+                        android:text="Play"
+                        android:textColor="#FFFFFFFF"
+                        android:textSize="15sp" />
+
+                    <ImageView
+                        android:id="@+id/streams"
+                        style="@style/InfoRoundButton"
+                        android:contentDescription="Choose a stream"
+                        android:src="@drawable/ic_streams" />
+
+                    <ImageView
+                        android:id="@+id/start_over"
+                        style="@style/InfoRoundButton"
+                        android:contentDescription="Start over"
+                        android:src="@drawable/ic_start_over"
+                        android:visibility="gone" />
+
+                    <ImageView
+                        android:id="@+id/watched"
+                        style="@style/InfoRoundButton"
+                        android:contentDescription="Mark watched"
+                        android:src="@drawable/ic_watched"
+                        android:visibility="gone" />
+
+                    <ImageView
+                        android:id="@+id/remove"
+                        style="@style/InfoRoundButton"
+                        android:contentDescription="Remove from Continue Watching"
+                        android:src="@drawable/ic_remove"
+                        android:visibility="gone" />
+
+                    <ImageView
+                        android:id="@+id/watchlist"
+                        style="@style/InfoRoundButton"
+                        android:contentDescription="Add to watchlist"
+                        android:src="@drawable/ic_watchlist_add"
+                        android:visibility="gone" />
+
+                    <ImageView
+                        android:id="@+id/trailer"
+                        style="@style/InfoRoundButton"
+                        android:contentDescription="Trailer"
+                        android:src="@drawable/ic_trailer"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/hint"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="14dp"
+                        android:singleLine="true"
+                        android:textColor="#FFB4B4B4"
+                        android:textSize="14sp" />
+                </LinearLayout>
+            </FrameLayout>
+
+            <!-- ======== seasons and episodes -->
             <LinearLayout
-                android:id="@+id/actions"
-                android:layout_width="wrap_content"
+                android:id="@+id/seasons_section"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
-                android:orientation="horizontal">
+                android:clipChildren="false"
+                android:orientation="vertical"
+                android:visibility="gone">
 
                 <TextView
-                    android:id="@+id/play"
-                    style="@style/ActionButton"
-                    android:text="Play" />
+                    android:id="@+id/seasons_heading"
+                    style="@style/InfoHeading"
+                    android:text="Seasons" />
 
-                <TextView
-                    android:id="@+id/streams"
-                    style="@style/ActionButton"
-                    android:text="Choose stream" />
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@+id/seasons"
+                    android:layout_width="match_parent"
+                    android:layout_height="30dp"
+                    android:layout_marginTop="5dp"
+                    android:clipToPadding="false"
+                    android:paddingStart="40dp"
+                    android:paddingEnd="40dp" />
 
-                <TextView
-                    android:id="@+id/start_over"
-                    style="@style/ActionButton"
-                    android:text="Start over"
-                    android:visibility="gone" />
-
-                <TextView
-                    android:id="@+id/trailer"
-                    style="@style/ActionButton"
-                    android:text="Trailer"
-                    android:visibility="gone" />
-
-                <TextView
-                    android:id="@+id/watched"
-                    style="@style/ActionButton"
-                    android:text="Mark watched" />
-
-                <TextView
-                    android:id="@+id/watchlist"
-                    style="@style/ActionButton"
-                    android:text="Add to watchlist"
-                    android:visibility="gone" />
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@+id/episodes"
+                    android:layout_width="match_parent"
+                    android:layout_height="165dp"
+                    android:layout_marginTop="5dp"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:paddingStart="40dp"
+                    android:paddingEnd="40dp" />
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/status"
-                android:layout_width="wrap_content"
+            <!-- ======== cast -->
+            <LinearLayout
+                android:id="@+id/cast_section"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:textColor="@color/guide_muted"
-                android:textSize="14sp" />
+                android:layout_marginTop="5dp"
+                android:clipChildren="false"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    style="@style/InfoHeading"
+                    android:text="Cast" />
+
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@+id/cast"
+                    android:layout_width="match_parent"
+                    android:layout_height="115dp"
+                    android:layout_marginTop="5dp"
+                    android:clipToPadding="false"
+                    android:paddingStart="33dp"
+                    android:paddingEnd="33dp" />
+            </LinearLayout>
+
+            <!-- ======== similar (MDBList) -->
+            <LinearLayout
+                android:id="@+id/similar_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:clipChildren="false"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    style="@style/InfoHeading"
+                    android:text="Similar" />
+
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@+id/similar"
+                    android:layout_width="match_parent"
+                    android:layout_height="180dp"
+                    android:layout_marginTop="5dp"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:paddingStart="34dp"
+                    android:paddingEnd="34dp" />
+            </LinearLayout>
+
+            <Space
+                android:layout_width="match_parent"
+                android:layout_height="30dp" />
         </LinearLayout>
-
-        <View
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
-
-        <androidx.leanback.widget.HorizontalGridView
-            android:id="@+id/seasons"
-            android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:clipToPadding="false"
-            android:paddingStart="@dimen/screen_margin"
-            android:paddingEnd="@dimen/screen_margin"
-            android:visibility="gone" />
-
-        <androidx.leanback.widget.HorizontalGridView
-            android:id="@+id/episodes"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:clipChildren="false"
-            android:clipToPadding="false"
-            android:paddingStart="@dimen/screen_margin"
-            android:paddingEnd="@dimen/screen_margin"
-            android:paddingTop="10dp"
-            android:paddingBottom="10dp"
-            android:visibility="gone" />
-    </LinearLayout>
+    </ScrollView>
 </FrameLayout>

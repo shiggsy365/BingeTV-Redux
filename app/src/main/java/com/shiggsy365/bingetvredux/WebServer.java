@@ -62,6 +62,8 @@ import fi.iki.elonen.NanoHTTPD;
  *   POST /api/logos                       {streamIds, group, source: "m3u"|"epg"}
  *   POST /api/logos/upload?streamId=ID    image bytes — sets a custom logo
  *   GET  /logos/ID.png                    an uploaded logo
+ *   POST /api/profiles/avatar?id=ID        image bytes — a profile's picture
+ *   GET  /avatars/ID.png                  a profile's picture
  *   GET  /api/backup?password=0|1         zip of settings, config, logos and guide lists
  *   POST /api/restore                     zip bytes from /api/backup; replaces everything
  *   GET  /api/connections                each account's connections in use and limit
@@ -107,7 +109,9 @@ public class WebServer extends NanoHTTPD {
         String client = session.getRemoteIpAddress();
         if (client != null) sRecentClients.put(client, System.currentTimeMillis());
         try {
-            if (!uri.startsWith("/api/") && !uri.startsWith("/logos/")) return serveAsset(uri);
+            if (!uri.startsWith("/api/") && !uri.startsWith("/logos/") && !uri.startsWith("/avatars/")) {
+                return serveAsset(uri);
+            }
             if ("/api/pair".equals(uri) && Method.POST.equals(session.getMethod())) {
                 return pair(readBody(session));
             }
@@ -115,6 +119,10 @@ public class WebServer extends NanoHTTPD {
                 return error(Response.Status.UNAUTHORIZED, "Enter the PIN shown on the TV");
             }
             if (uri.startsWith("/logos/")) return serveLogo(uri);
+            if (uri.startsWith("/avatars/")) return serveAvatar(uri);
+            if ("/api/profiles/avatar".equals(uri) && Method.POST.equals(session.getMethod())) {
+                return json(Response.Status.OK, uploadAvatar(session));
+            }
             if ("/api/logos/upload".equals(uri) && Method.POST.equals(session.getMethod())) {
                 return json(Response.Status.OK, uploadLogo(session));
             }
@@ -796,6 +804,38 @@ public class WebServer extends NanoHTTPD {
                 .put("height", bitmap.getHeight());
     }
 
+    /** A profile picture: centre-cropped to a square, AVATAR_PX across. */
+    private JSONObject uploadAvatar(IHTTPSession session) throws Exception {
+        String id = session.getParms().get("id");
+        if (TextUtils.isEmpty(id) || Profiles.get(mContext, id) == null) {
+            throw new IllegalArgumentException("No such profile");
+        }
+        byte[] data = readBytes(session, MAX_UPLOAD_BYTES);
+        android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeByteArray(data, 0, data.length);
+        if (bitmap == null) throw new IllegalArgumentException("That file isn't an image");
+        int side = Math.min(bitmap.getWidth(), bitmap.getHeight());
+        bitmap = android.graphics.Bitmap.createBitmap(bitmap, (bitmap.getWidth() - side) / 2,
+                (bitmap.getHeight() - side) / 2, side, side);
+        if (side > AVATAR_PX) bitmap = android.graphics.Bitmap.createScaledBitmap(bitmap, AVATAR_PX, AVATAR_PX, true);
+        File file = Profiles.avatarFile(mContext, id);
+        //noinspection ResultOfMethodCallIgnored
+        file.getParentFile().mkdirs();
+        try (OutputStream out = new FileOutputStream(file)) {
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+        }
+        return new JSONObject().put("ok", true);
+    }
+
+    private Response serveAvatar(String uri) throws IOException {
+        String name = uri.substring("/avatars/".length());
+        File file = name.matches("[a-z0-9]+\\.png")
+                ? Profiles.avatarFile(mContext, name.substring(0, name.length() - 4)) : null;
+        if (file == null || !file.exists()) {
+            return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found");
+        }
+        return newFixedLengthResponse(Response.Status.OK, "image/png", new FileInputStream(file), file.length());
+    }
+
     private Response serveLogo(String uri) throws IOException {
         String name = uri.substring("/logos/".length());
         if (!name.matches("\\d+\\.png")) {
@@ -985,6 +1025,8 @@ public class WebServer extends NanoHTTPD {
      * Builds a zip of everything needed to set BingeTV Redux up again: account settings (optionally
      * without the password), the channel config, uploaded logos and cached guide channel lists.
      */
+    private static final int AVATAR_PX = 256;
+
     private Response backup(boolean includePassword) throws Exception {
         java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
         try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(bytes)) {
@@ -1025,6 +1067,12 @@ public class WebServer extends NanoHTTPD {
             putEntry(zip, "config.json", configJson.toString(2)
                     .getBytes(StandardCharsets.UTF_8));
             // Only logos a channel uses: switching back to M3U/EPG leaves the old file behind.
+            File[] avatars = new File(mContext.getFilesDir(), "avatars").listFiles();
+            for (int i = 0; avatars != null && i < avatars.length; i++) {
+                if (avatars[i].getName().matches("[a-z0-9]+\\.png")) {
+                    putEntry(zip, "avatars/" + avatars[i].getName(), readFile(avatars[i]));
+                }
+            }
             File[] logos = new File(mContext.getFilesDir(), "logos").listFiles();
             if (logos != null) {
                 for (File logo : logos) {
@@ -1067,6 +1115,7 @@ public class WebServer extends NanoHTTPD {
         JSONObject addons = null;
         JSONObject profiles = null;
         Map<String, byte[]> logos = new HashMap<>();
+        Map<String, byte[]> avatars = new HashMap<>();
         Map<String, byte[]> guides = new HashMap<>();
         try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(
                 new java.io.ByteArrayInputStream(data))) {
@@ -1084,6 +1133,8 @@ public class WebServer extends NanoHTTPD {
                     addons = new JSONObject(new String(content, StandardCharsets.UTF_8));
                 } else if ("config.json".equals(name)) {
                     config = new JSONObject(new String(content, StandardCharsets.UTF_8));
+                } else if (name.matches("avatars/[a-z0-9]+\\.png")) {
+                    avatars.put(name.substring("avatars/".length()), content);
                 } else if (name.matches("logos/\\d+\\.png")) {
                     logos.put(name.substring("logos/".length()), content);
                 } else if (name.matches("guides/guide_[A-Za-z0-9_-]+\\.json")) {
@@ -1124,7 +1175,21 @@ public class WebServer extends NanoHTTPD {
         ChannelConfig.replace(mContext, config);
         // FyrTuner's backups have no addons: the ones here stay.
         if (addons != null) Stremio.addons(mContext).replace(addons);
-        if (profiles != null) Profiles.restore(mContext, profiles);
+        if (profiles != null) {
+            Profiles.restore(mContext, profiles);
+            // Profile pictures: the backup's replace any here.
+            File[] old = new File(mContext.getFilesDir(), "avatars").listFiles();
+            for (int i = 0; old != null && i < old.length; i++) //noinspection ResultOfMethodCallIgnored
+                old[i].delete();
+            for (Map.Entry<String, byte[]> avatar : avatars.entrySet()) {
+                File file = Profiles.avatarFile(mContext, avatar.getKey().replace(".png", ""));
+                //noinspection ResultOfMethodCallIgnored
+                file.getParentFile().mkdirs();
+                try (OutputStream out = new FileOutputStream(file)) {
+                    out.write(avatar.getValue());
+                }
+            }
+        }
 
         File logoDir = new File(mContext.getFilesDir(), "logos");
         File[] oldLogos = logoDir.listFiles();

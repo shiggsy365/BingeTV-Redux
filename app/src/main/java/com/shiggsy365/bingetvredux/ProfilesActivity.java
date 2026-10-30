@@ -42,8 +42,8 @@ public class ProfilesActivity extends Activity {
         @Override
         public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
             Profiles.Profile p = mProfiles.get(position);
-            TextView avatar = holder.itemView.findViewById(R.id.avatar);
-            avatar.setText(p.name.isEmpty() ? "?" : p.name.substring(0, 1).toUpperCase(Locale.ROOT));
+            View avatar = holder.itemView.findViewById(R.id.avatar);
+            Avatars.bind(avatar, p);
             ((TextView) holder.itemView.findViewById(R.id.name)).setText(p.name);
             avatar.setOnClickListener(v -> {
                 Profiles.setCurrent(ProfilesActivity.this, p.id);

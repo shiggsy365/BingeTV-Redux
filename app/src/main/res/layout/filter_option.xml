@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One option in the See all screen's filter drop-down. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="34dp"
+    android:background="@drawable/filter_option"
+    android:ellipsize="end"
+    android:gravity="center_vertical"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:singleLine="true"
+    android:textColor="@color/guide_text"
+    android:textSize="15sp" />

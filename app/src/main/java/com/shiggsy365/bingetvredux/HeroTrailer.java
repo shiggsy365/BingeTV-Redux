@@ -3,6 +3,7 @@ package com.shiggsy365.bingetvredux;
 import android.app.Activity;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.View;
 
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -16,14 +17,18 @@ import java.util.concurrent.Executors;
 
 /**
  * Home's trailers: when focus rests on a title for a few seconds (the profile's setting), its
- * YouTube trailer fades in over the backdrop, with or without sound. Moving on stops it. A
- * title whose catalog entry doesn't name a trailer is looked up in full first.
+ * YouTube trailer plays in a window at the top right, with or without sound: as it's about to
+ * start, the artwork fades to black, then the trailer fades in. Moving on stops it and brings
+ * the artwork back. A title whose catalog entry doesn't name a trailer is looked up in full
+ * first.
  */
 final class HeroTrailer {
     private static final int MAX_HEIGHT = 720;
 
     private final Activity mActivity;
     private final PlayerView mView;
+    // The artwork that fades out while a trailer plays.
+    private final View[] mArtwork;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
     private ExoPlayer mPlayer;
@@ -31,9 +36,10 @@ final class HeroTrailer {
     // Which title is current, so a slow lookup for an earlier one is dropped.
     private int mGeneration;
 
-    HeroTrailer(Activity activity, PlayerView view) {
+    HeroTrailer(Activity activity, PlayerView view, View... artwork) {
         mActivity = activity;
         mView = view;
+        mArtwork = artwork;
     }
 
     /** The title now in the hero; null clears it. */
@@ -73,7 +79,8 @@ final class HeroTrailer {
         mPlayer.addListener(new Player.Listener() {
             @Override
             public void onRenderedFirstFrame() {
-                mView.animate().alpha(1f).setDuration(600).start();
+                for (View v : mArtwork) v.animate().alpha(0f).setDuration(400).start();
+                mView.animate().alpha(1f).setStartDelay(400).setDuration(500).start();
             }
 
             @Override
@@ -92,6 +99,7 @@ final class HeroTrailer {
         mView.animate().cancel();
         mView.setAlpha(0f);
         if (mPlayer != null) {
+            for (View v : mArtwork) v.animate().alpha(1f).setStartDelay(0).setDuration(300).start();
             mView.setPlayer(null);
             mPlayer.release();
             mPlayer = null;

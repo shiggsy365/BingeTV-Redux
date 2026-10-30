@@ -31,8 +31,6 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     static final String PAGE_HOME = AddonStore.HOME;
     private static final String PAGE_LIVE = "live";
     private static final String PAGE_SEARCH = "search";
-    private static final String PAGE_PROFILE = "profile";
-    private static final String PAGE_SETTINGS = "settings";
     // Whether "Who's watching?" has been asked since the app started.
     private static boolean sProfileChosen;
     private static final long HERO_DELAY_MS = 150;
@@ -41,9 +39,12 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     private LinearLayout mMenu;
     private TextView mClock;
     private ImageView mBackdrop;
+    private ImageView mBackdropFull;
     private ImageView mHeroLogo;
     private TextView mHeroTitle;
-    private TextView mHeroMeta;
+    private TextView mHeroSubtitle;
+    private LinearLayout mHeroFacts;
+    private LinearLayout mHeroGenres;
     private TextView mHeroDesc;
     private TextView mEmpty;
     private VerticalGridView mRowsView;
@@ -57,6 +58,11 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     // The profile and watch state the page was built for: either changing rebuilds it.
     private String mPageState = "";
     private MetaItem mHeroItem;
+    private View mHero;
+    private View mBackdropDim;
+    // The menu bar has the focus: one random title of the first row fills the screen, dimmed,
+    // without the windowed artwork or the title's details.
+    private boolean mMenuMode;
     private MetaItem mPendingHero;
     private final Runnable mShowHero = () -> bindHero(mPendingHero);
     private HeroTrailer mTrailer;
@@ -75,17 +81,30 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         WebServerService.start(this);
         mTimeFormat = android.text.format.DateFormat.getTimeFormat(this);
         mMenu = findViewById(R.id.menu_items);
+        View logo = findViewById(R.id.menu_logo);
+        logo.setOnClickListener(v -> startActivity(new Intent(this, MainActivity.class)));
+        logo.setOnFocusChangeListener((v, focused) -> {
+            findViewById(R.id.menu_logo_underline).animate().alpha(focused ? 1f : 0f)
+                    .setDuration(160).start();
+            v.post(this::updateMenuMode);
+        });
         mClock = findViewById(R.id.clock);
         mBackdrop = findViewById(R.id.backdrop);
+        mBackdropFull = findViewById(R.id.backdrop_full);
+        mHero = findViewById(R.id.hero);
+        mBackdropDim = findViewById(R.id.backdrop_dim);
         mHeroLogo = findViewById(R.id.hero_logo);
         mHeroTitle = findViewById(R.id.hero_title);
-        mHeroMeta = findViewById(R.id.hero_meta);
+        mHeroSubtitle = findViewById(R.id.hero_subtitle);
+        mHeroFacts = findViewById(R.id.hero_facts);
+        mHeroGenres = findViewById(R.id.hero_genres);
         mHeroDesc = findViewById(R.id.hero_desc);
         mEmpty = findViewById(R.id.empty);
         mRowsView = findViewById(R.id.rows);
         mRows = new CatalogRows(this, mRowsView, this);
         mRows.setOnChanged(this::updateEmpty);
-        mTrailer = new HeroTrailer(this, findViewById(R.id.hero_video));
+        mTrailer = new HeroTrailer(this, findViewById(R.id.hero_video), mBackdrop, mBackdropFull,
+                findViewById(R.id.clock));
         if (savedInstanceState != null) mPage = savedInstanceState.getString("page", PAGE_HOME);
         if (!sProfileChosen && Profiles.all(this).size() > 1) {
             startActivity(new Intent(this, ProfilesActivity.class));
@@ -101,13 +120,13 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     }
 
     /**
-     * Debug builds: {@code am start -n …/.HomeActivity --es debug_type movie --es debug_id tt…}
-     * opens that title's info page, for testing without steering through the rows.
+     * {@code am start -n …/.HomeActivity --es debug_type movie --es debug_id tt…} opens that
+     * title's info page, for testing and measuring without steering through the rows.
      */
     private void openDebugTitle(Intent intent) {
         String type = intent.getStringExtra("debug_type");
         String id = intent.getStringExtra("debug_id");
-        if (!BuildConfig.DEBUG || type == null || id == null) return;
+        if (type == null || id == null) return;
         startActivity(new Intent(this, DetailsActivity.class)
                 .putExtra("type", type).putExtra("id", id).putExtra("name", id));
     }
@@ -167,32 +186,60 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
 
     private void buildMenu() {
         mMenu.removeAllViews();
-        addMenuItem(PAGE_HOME, "Home");
-        for (AddonStore.HubInfo hub : Stremio.addons(this).hubsInUse()) {
-            if (!AddonStore.HOME.equals(hub.id)) addMenuItem(hub.id, hub.name);
+        AddonStore store = Stremio.addons(this);
+        String homeIcon = "";
+        for (AddonStore.HubInfo hub : store.hubs()) if (AddonStore.HOME.equals(hub.id)) homeIcon = hub.icon;
+        addMenuItem(PAGE_HOME, "Home", hubIconPath(AddonStore.HOME, homeIcon));
+        for (AddonStore.HubInfo hub : store.hubsInUse()) {
+            if (!AddonStore.HOME.equals(hub.id)) addMenuItem(hub.id, hub.name, hubIconPath(hub.id, hub.icon));
         }
-        addMenuItem(PAGE_SEARCH, "Search");
-        addMenuItem(PAGE_LIVE, "Live TV");
-        if (Profiles.all(this).size() > 1) addMenuItem(PAGE_PROFILE, Profiles.current(this).name);
-        addMenuItem(PAGE_SETTINGS, "Settings");
+        addMenuItem(PAGE_LIVE, "Live TV", MenuIcons.LIVE);
+        addMenuItem(PAGE_SEARCH, "Search", MenuIcons.SEARCH);
+        // Profiles and settings are behind the logo (MainActivity).
         // A hub that's gone (no catalogs left) falls back to Home.
         if (mMenu.findViewWithTag(mPage) == null) mPage = PAGE_HOME;
         markMenu();
     }
 
-    private void addMenuItem(String page, String label) {
-        TextView item = (TextView) LayoutInflater.from(this).inflate(R.layout.menu_item, mMenu, false);
-        item.setText(label);
+    private static String hubIconPath(String hubId, String icon) {
+        return MenuIcons.hubPath(icon.isEmpty() ? MenuIcons.defaultFor(hubId) : icon);
+    }
+
+    private void addMenuItem(String page, String label, String iconPath) {
+        View item = LayoutInflater.from(this).inflate(R.layout.menu_item, mMenu, false);
+        ((ImageView) item.findViewById(R.id.menu_icon)).setImageDrawable(
+                MenuIcons.drawable(this, iconPath, 22));
+        ((TextView) item.findViewById(R.id.menu_label)).setText(label);
+        item.setContentDescription(label);
         item.setTag(page);
         item.setOnClickListener(v -> openPage(page));
+        item.setOnFocusChangeListener((v, focused) -> {
+            // The bar widens smoothly as the focused item shows its name.
+            android.transition.TransitionManager.beginDelayedTransition(mMenu,
+                    new android.transition.ChangeBounds().setDuration(160));
+            styleMenuItem(v);
+            // Once the focus has settled: still somewhere on the bar, or gone to the rows.
+            v.post(this::updateMenuMode);
+        });
         mMenu.addView(item);
     }
 
     private void markMenu() {
-        for (int i = 0; i < mMenu.getChildCount(); i++) {
-            View item = mMenu.getChildAt(i);
-            item.setSelected(mPage.equals(item.getTag()));
-        }
+        for (int i = 0; i < mMenu.getChildCount(); i++) styleMenuItem(mMenu.getChildAt(i));
+    }
+
+    /**
+     * Focused: its name shows, beside a white icon, over the red underline. The page on screen:
+     * a white icon. Others: a dimmer icon.
+     */
+    private void styleMenuItem(View item) {
+        boolean focused = item.hasFocus();
+        boolean current = mPage.equals(item.getTag());
+        item.findViewById(R.id.menu_label).setVisibility(focused ? View.VISIBLE : View.GONE);
+        ((ImageView) item.findViewById(R.id.menu_icon)).setColorFilter(
+                focused || current ? 0xFFFFFFFF : 0xB3FFFFFF);
+        View underline = item.findViewById(R.id.menu_underline);
+        underline.animate().alpha(focused ? 1f : 0f).setDuration(160).start();
     }
 
     private void focusMenu() {
@@ -205,10 +252,6 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
             startActivity(new Intent(this, GuideActivity.class));
         } else if (PAGE_SEARCH.equals(page)) {
             startActivity(new Intent(this, SearchActivity.class));
-        } else if (PAGE_PROFILE.equals(page)) {
-            startActivity(new Intent(this, ProfilesActivity.class));
-        } else if (PAGE_SETTINGS.equals(page)) {
-            startActivity(new Intent(this, MainActivity.class));
         } else if (!page.equals(mPage)) {
             showPage(page);
         }
@@ -301,24 +344,61 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         return Profiles.current(this).id + "|" + WatchStore.get(this).version();
     }
 
+    private void updateMenuMode() {
+        boolean onBar = mMenu.hasFocus() || findViewById(R.id.menu_logo).hasFocus();
+        if (isDestroyed() || onBar == mMenuMode) return;
+        mMenuMode = onBar;
+        long ms = 250;
+        if (mMenuMode) {
+            mHandler.removeCallbacks(mShowHero);
+            mTrailer.show(null);
+            MetaItem pick = mRows.randomFirstItem();
+            if (pick != null) Images.fade(mBackdropFull, pick.background.isEmpty() ? pick.poster : pick.background);
+            mBackdrop.animate().alpha(0f).setDuration(ms).start();
+            mHero.animate().alpha(0f).setDuration(ms).start();
+            mBackdropDim.animate().alpha(0.7f).setDuration(ms).start();
+        } else {
+            mBackdrop.animate().alpha(1f).setDuration(ms).start();
+            mHero.animate().alpha(1f).setDuration(ms).start();
+            mBackdropDim.animate().alpha(1f).setDuration(ms).start();
+            // Back to the focused title's two layers.
+            MetaItem item = mPendingHero != null ? mPendingHero : mHeroItem;
+            mHeroItem = null;
+            bindHero(item);
+        }
+    }
+
     private void bindHero(MetaItem item) {
+        if (mMenuMode) {
+            // Shown when the focus goes back to the rows.
+            mPendingHero = item;
+            return;
+        }
         if (item == mHeroItem && item != null) return;
         mHeroItem = item;
         mTrailer.show(item);
         if (item == null) {
             Images.fade(mBackdrop, null);
+            Images.fadeSoft(mBackdropFull, null);
             Images.load(mHeroLogo, null);
             mHeroTitle.setText(null);
-            mHeroMeta.setText(null);
+            mHeroSubtitle.setVisibility(View.GONE);
+            InfoChips.fill(mHeroFacts, new ArrayList<>());
+            InfoChips.fill(mHeroGenres, new ArrayList<>());
             mHeroDesc.setText(null);
             return;
         }
-        Images.fade(mBackdrop, item.background.isEmpty() ? item.poster : item.background);
+        String art = item.background.isEmpty() ? item.poster : item.background;
+        Images.fade(mBackdrop, art);
+        Images.fadeSoft(mBackdropFull, art);
         mHeroTitle.setText(item.name);
         mHeroTitle.setVisibility(item.logo.isEmpty() ? View.VISIBLE : View.GONE);
         mHeroLogo.setVisibility(item.logo.isEmpty() ? View.GONE : View.VISIBLE);
         Images.fade(mHeroLogo, item.logo);
-        mHeroMeta.setText(metaLine(item));
+        mHeroSubtitle.setText(item.subtitle);
+        mHeroSubtitle.setVisibility(item.subtitle.isEmpty() ? View.GONE : View.VISIBLE);
+        InfoChips.fill(mHeroFacts, InfoChips.facts(item));
+        InfoChips.fill(mHeroGenres, InfoChips.genres(item));
         mHeroDesc.setText(item.description);
     }
 

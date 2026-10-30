@@ -68,7 +68,10 @@ public class StremioClient {
         if (mCache == null || ttlMs <= 0) return getJson(url);
         long now = System.currentTimeMillis();
         ResponseCache.Hit hit = mCache.get(url, now);
-        if (hit != null && hit.fresh) return hit.data;
+        if (hit != null && hit.fresh) {
+            RequestLog.log("GET", url, "cache", 0, now);
+            return hit.data;
+        }
         try {
             JSONObject data = getJson(url);
             mCache.put(url, data, now + ttlMs);
@@ -89,6 +92,9 @@ public class StremioClient {
 
     public JSONObject getJson(String url) throws StremioException {
         HttpURLConnection conn = null;
+        long started = System.currentTimeMillis();
+        String status = "error";
+        long bytes = 0;
         try {
             conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setConnectTimeout(mTimeoutMs);
@@ -96,17 +102,21 @@ public class StremioClient {
             conn.setRequestProperty("User-Agent", USER_AGENT);
             conn.setRequestProperty("Accept", "application/json");
             conn.setRequestProperty("Accept-Encoding", "gzip");
-            int status = conn.getResponseCode();
-            if (status != 200) throw new StremioException("The addon answered HTTP " + status);
+            int code = conn.getResponseCode();
+            status = String.valueOf(code);
+            if (code != 200) throw new StremioException("The addon answered HTTP " + code);
             InputStream in = conn.getInputStream();
             if ("gzip".equalsIgnoreCase(conn.getContentEncoding())) in = new GZIPInputStream(in);
-            return new JSONObject(read(in));
+            String text = read(in);
+            bytes = text.length();
+            return new JSONObject(text);
         } catch (JSONException e) {
             throw new StremioException("The addon's answer isn't JSON");
         } catch (IOException e) {
             throw new StremioException("Couldn't reach the addon: " + describe(e), e);
         } finally {
             if (conn != null) conn.disconnect();
+            RequestLog.log("GET", url, status, bytes, started);
         }
     }
 

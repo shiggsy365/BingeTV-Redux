@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The player's OSD, as BingeTV's: a banner along the top (logo or title, what's playing, genres,
+     plot while paused, the clock), and along the bottom the status, times, progress line (Up to
+     seek), "Ends at", the stream's badges, round buttons and a caption for the focused one.
+     Osd fills in the buttons. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/osd"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:visibility="gone">
+
+    <!-- ======== banner -->
+    <FrameLayout
+        android:id="@+id/osd_banner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/osd_top"
+        android:paddingStart="40dp"
+        android:paddingTop="28dp"
+        android:paddingEnd="40dp"
+        android:paddingBottom="60dp">
+
+        <LinearLayout
+            android:layout_width="560dp"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <FrameLayout
+                android:layout_width="wrap_content"
+                android:layout_height="52dp">
+
+                <ImageView
+                    android:id="@+id/osd_logo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:adjustViewBounds="true"
+                    android:maxWidth="320dp"
+                    android:scaleType="fitStart"
+                    android:importantForAccessibility="no" />
+
+                <TextView
+                    android:id="@+id/osd_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:gravity="center_vertical"
+                    android:singleLine="true"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="26sp" />
+            </FrameLayout>
+
+            <TextView
+                android:id="@+id/osd_line"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:textColor="#FFFFFFFF"
+                android:textSize="17sp" />
+
+            <TextView
+                android:id="@+id/osd_genres"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:singleLine="true"
+                android:textColor="#FFB4B4B4"
+                android:textSize="13sp" />
+
+            <com.shiggsy365.bingetvredux.ScrollingText
+                android:id="@+id/osd_plot"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:ellipsize="end"
+                android:maxLines="3"
+                android:textColor="#FFE6E6E6"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/osd_clock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:shadowColor="#CC000000"
+            android:shadowRadius="4"
+            android:textColor="#FFFFFFFF"
+            android:textSize="22sp" />
+    </FrameLayout>
+
+    <!-- ======== bar and buttons -->
+    <LinearLayout
+        android:id="@+id/osd_bottom"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@drawable/osd_bottom"
+        android:orientation="vertical"
+        android:paddingStart="40dp"
+        android:paddingTop="70dp"
+        android:paddingEnd="40dp"
+        android:paddingBottom="22dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/osd_status"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="#FFFFFFFF"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/osd_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFFFF"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <com.shiggsy365.bingetvredux.OsdBar
+            android:id="@+id/osd_seek"
+            android:layout_width="match_parent"
+            android:layout_height="20dp"
+            android:layout_marginTop="2dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:id="@+id/osd_badges"
+                android:layout_width="0dp"
+                android:layout_height="17dp"
+                android:layout_weight="1"
+                android:orientation="horizontal" />
+
+            <TextView
+                android:id="@+id/osd_finish"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFB4B4B4"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/osd_buttons"
+            android:layout_width="wrap_content"
+            android:layout_height="33dp"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal" />
+
+        <TextView
+            android:id="@+id/osd_caption"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textColor="#FFB4B4B4"
+            android:textSize="13sp" />
+    </LinearLayout>
+</FrameLayout>

@@ -20,12 +20,13 @@ Stremio addons you add.
    download with, such as Downloader).
 2. Download `BingeTV-Redux-<version>.apk` from the
    [latest release](https://github.com/shiggsy365/BingeTV-Redux/releases/latest) and install it.
-3. Open BingeTV Redux, then **Settings** on its menu bar. Scan the QR code with your phone (or open
-   the address it shows on any device on the same network). The QR code fills in the PIN for
-   you; otherwise type the 4-digit PIN shown on the TV.
+3. Open BingeTV Redux and select the **logo** at the left of its menu bar: profiles along the top,
+   settings below. Scan the QR code with your phone (or open the address it shows on any device on
+   the same network). The QR code fills in the PIN for you; otherwise type the 4-digit PIN shown on
+   the TV.
 
-Updates: about once a week the app checks for a new release and offers to install it. Settings →
-**Check for updates** checks straight away.
+Updates: about once a week the app checks for a new release and offers to install it. **Check for
+updates** (under the logo) checks straight away.
 
 ## Setting up (on the web page)
 
@@ -36,10 +37,11 @@ Updates: about once a week the app checks for a new release and offers to instal
 - **Catalogs:** each hub (Home, Movies, TV Shows, Anime, More and your own) is a page on the TV's
   menu bar, with a row for each catalog in it. Move catalogs between hubs, rename, reorder or
   hide them, and choose which catalogs Search uses.
-- **Profiles:** each person gets their own watch history, settings and MDBList account. Per
-  profile: stream order and filters (highest resolution, hide CAM, keywords), whether Play starts
-  the best stream or lists them, Up Next, subtitle languages, Home's rows (Continue Watching,
-  Next Up, Watchlist, On Now), trailers on Home, and MDBList.
+- **Profiles:** each person gets their own picture, watch history, settings and MDBList account.
+  Per profile: stream order and filters (highest resolution, hide CAM, keywords), whether Play
+  starts the best stream or lists them, Up Next, audio and subtitle languages (best first; the
+  player picks matching tracks), Home's rows (Continue Watching, which can include the next
+  episode of shows you're watching, Next Up, Watchlist, On Now), trailers on Home, and MDBList.
 - **Groups & channels, Logos, Guides, Settings:** live TV, as in FyrTuner: Xtream accounts,
   groups, channel merging and order, logos, XMLTV guides, catch-up, and backup and restore.
 
@@ -51,16 +53,26 @@ make a new PIN or forget every browser.
 
 ## On the TV
 
-- **Home** and the **hubs**: rows of posters, with the focused title's details over its artwork.
-  The last card in a row, **See all**, opens the whole catalog with its genres.
-- **Info pages:** details, cast, trailer, seasons and episodes (with what you've watched), Play
-  or Resume, Choose stream, Mark watched, and Add to watchlist (with MDBList).
-- **Player:** Menu switches stream without losing your place; the controls' buttons choose
-  subtitles and audio. If a stream fails, the next one is tried. Near the end of an episode,
-  Up Next counts down to the next one. Back stops playback.
+- **Home** and the **hubs** (icons on the menu bar; each hub's icon is chosen on the web page):
+  rows of posters, with the focused title's details over its artwork, and ribbons for what's
+  paused or watched. A row shows up to 50; its last card, **See all**, opens the whole catalog
+  with a genre filter. Details come from your first metadata addon (e.g. AIOMetadata above
+  Cinemeta), whichever addon's catalog a title is from.
+- **Info pages:** details, seasons and episodes (with what you've watched), the cast (select
+  someone to search for them), similar titles (with MDBList), Play or Resume, choose a stream,
+  mark watched, the watchlist, the trailer, and remove from Continue Watching or Next Up.
+- **Streams:** cards in two columns with badges for quality, HDR, audio and cached, filtered by
+  addon, resolution or cached.
+- **Player:** the OSD has the title, times, progress (Up to seek, Left/Right to skip), and buttons
+  for playback, streams, audio, subtitles (tracks from the video or your subtitle addons, an
+  offset to fix lip sync, and a style: colour, size, outline), picture size and speed. If a
+  stream fails, the next one is tried. Near the end of an episode, Up Next counts down to the
+  next one. The TV switches to the refresh rate that suits the video (50 Hz for UK television),
+  where it has one.
 - **Search** across all your search catalogs as you type.
-- **Live TV:** the guide, with the player's Start over, catch-up and stream choice. A stream whose
-  Xtream account is already in use on another TV is skipped, so nobody gets cut off.
+- **Live TV:** the guide, and the same OSD with channels, catch-up, Start over and Change stream.
+  A stream whose Xtream account is already in use on another TV is skipped, so nobody gets cut
+  off.
 
 ## Building
 

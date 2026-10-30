@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cast photo: a red ring when focused. Drawn over the photo. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="oval">
+            <stroke android:width="3dp" android:color="@color/guide_focus" />
+        </shape>
+    </item>
+    <item android:drawable="@android:color/transparent" />
+</selector>

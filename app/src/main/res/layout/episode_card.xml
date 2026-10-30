@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="@dimen/landscape_width"
-    android:layout_height="wrap_content"
-    android:layout_marginEnd="16dp"
-    android:clipChildren="false"
-    android:orientation="vertical">
+<!-- An episode on the info page, as BingeTV's: the still with its code, title, plot, air date
+     and rating over it, a ribbon when paused or watched, and how far it's been watched below. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="258dp"
+    android:layout_height="165dp"
+    android:clipChildren="false">
 
     <FrameLayout
         android:id="@+id/card"
-        android:layout_width="@dimen/landscape_width"
-        android:layout_height="@dimen/landscape_height"
+        android:layout_width="247dp"
+        android:layout_height="150dp"
+        android:layout_marginTop="5dp"
         android:background="@drawable/card_placeholder"
         android:clickable="true"
         android:focusable="true"
@@ -22,46 +23,109 @@
             android:scaleType="centerCrop"
             android:importantForAccessibility="no" />
 
-        <TextView
-            android:id="@+id/card_watched"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/card_shade" />
+
+        <ImageView
+            android:id="@+id/card_ribbon"
+            android:layout_width="85dp"
+            android:layout_height="85dp"
             android:layout_gravity="top|end"
-            android:layout_margin="6dp"
-            android:background="@drawable/watched_badge"
-            android:gravity="center"
-            android:text="✓"
-            android:textColor="#FFFFFFFF"
-            android:textSize="13sp"
+            android:importantForAccessibility="no"
             android:visibility="gone" />
 
-        <ProgressBar
-            android:id="@+id/card_progress"
-            style="?android:attr/progressBarStyleHorizontal"
+        <TextView
+            android:id="@+id/card_code"
+            android:layout_width="wrap_content"
+            android:layout_height="15dp"
+            android:layout_margin="6dp"
+            android:background="@drawable/info_code_badge"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center"
+            android:minWidth="52dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:textColor="#FFFFFFFF"
+            android:textSize="10sp" />
+
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="4dp"
+            android:layout_height="wrap_content"
             android:layout_gravity="bottom"
-            android:max="1000"
-            android:progressDrawable="@drawable/guide_progress"
-            android:visibility="gone" />
+            android:orientation="vertical"
+            android:paddingStart="9dp"
+            android:paddingEnd="9dp"
+            android:paddingBottom="6dp">
+
+            <TextView
+                android:id="@+id/card_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:shadowColor="#A0000000"
+                android:shadowRadius="2"
+                android:singleLine="true"
+                android:textColor="#FFFFFFFF"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/card_overview"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:ellipsize="end"
+                android:lineSpacingExtra="0dp"
+                android:maxLines="2"
+                android:shadowColor="#A0000000"
+                android:shadowRadius="2"
+                android:textColor="#FFE6E6E6"
+                android:textSize="11sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/card_subtitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:singleLine="true"
+                    android:textColor="#FFD0D0D0"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:id="@+id/card_rating"
+                    android:layout_width="wrap_content"
+                    android:layout_height="14dp"
+                    android:background="@drawable/info_badge_outline"
+                    android:fontFamily="sans-serif-medium"
+                    android:gravity="center"
+                    android:minWidth="28dp"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="10sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </LinearLayout>
     </FrameLayout>
 
-    <TextView
-        android:id="@+id/card_title"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:ellipsize="end"
-        android:singleLine="true"
-        android:textColor="@color/guide_text"
-        android:textSize="14sp" />
-
-    <TextView
-        android:id="@+id/card_subtitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:ellipsize="end"
-        android:singleLine="true"
-        android:textColor="@color/guide_muted"
-        android:textSize="12sp" />
-</LinearLayout>
+    <ProgressBar
+        android:id="@+id/card_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="241dp"
+        android:layout_height="3dp"
+        android:layout_marginStart="3dp"
+        android:layout_marginTop="159dp"
+        android:max="1000"
+        android:progressDrawable="@drawable/guide_progress"
+        android:visibility="gone" />
+</FrameLayout>

@@ -24,6 +24,8 @@ public class TrailerActivity extends Activity {
     private PlayerView mPlayerView;
     private TextView mStatus;
     private ExoPlayer mPlayer;
+    // Puts the TV in the display mode that suits the video (see FrameRateMatcher).
+    private FrameRateMatcher mFrameRate;
     private Youtube.Streams mStreams;
     private long mPosition;
     private boolean mVisible;
@@ -71,6 +73,10 @@ public class TrailerActivity extends Activity {
         if (mPlayer != null) {
             mPosition = mPlayer.getCurrentPosition();
             mPlayerView.setPlayer(null);
+            if (mFrameRate != null) {
+                mFrameRate.release();
+                mFrameRate = null;
+            }
             mPlayer.release();
             mPlayer = null;
         }
@@ -86,6 +92,7 @@ public class TrailerActivity extends Activity {
     private void play() {
         mStatus.setVisibility(View.GONE);
         mPlayer = Players.trailer(this, mStreams);
+        mFrameRate = FrameRateMatcher.attach(this, mPlayer);
         mPlayer.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {

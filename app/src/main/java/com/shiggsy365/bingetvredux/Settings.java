@@ -28,6 +28,8 @@ public final class Settings {
     public static final String AUTOPLAY_NEXT = "autoplayNext";
     public static final String SUBTITLE_LANGUAGES = "subtitleLanguages";
     public static final String SUBTITLES_ON = "subtitlesOn";
+    /** Audio track languages, best first (codes or names). */
+    public static final String AUDIO_LANGUAGES = "audioLanguages";
     public static final String WATCHED_PERCENT = "watchedPercent";
     public static final String MDBLIST_KEY = "mdblistKey";
     public static final String MDBLIST_SCROBBLE = "mdblistScrobble";
@@ -37,6 +39,8 @@ public final class Settings {
     public static final String TRAILER_MUTED = "trailerMuted";
     public static final String ROW_CONTINUE = "rowContinue";
     public static final String ROW_NEXT_UP = "rowNextUp";
+    /** Continue Watching also lists the next episode of shows being watched (one row, as BingeTV). */
+    public static final String CONTINUE_WITH_NEXT_UP = "continueWithNextUp";
     public static final String ROW_WATCHLIST = "rowWatchlist";
     public static final String ROW_ON_NOW = "rowOnNow";
 
@@ -52,6 +56,7 @@ public final class Settings {
         DEFAULTS.put(AUTOPLAY_NEXT, true);
         DEFAULTS.put(SUBTITLE_LANGUAGES, "");
         DEFAULTS.put(SUBTITLES_ON, false);
+        DEFAULTS.put(AUDIO_LANGUAGES, "");
         DEFAULTS.put(WATCHED_PERCENT, 90);
         DEFAULTS.put(MDBLIST_KEY, "");
         DEFAULTS.put(MDBLIST_SCROBBLE, true);
@@ -61,6 +66,7 @@ public final class Settings {
         DEFAULTS.put(TRAILER_MUTED, true);
         DEFAULTS.put(ROW_CONTINUE, true);
         DEFAULTS.put(ROW_NEXT_UP, true);
+        DEFAULTS.put(CONTINUE_WITH_NEXT_UP, true);
         DEFAULTS.put(ROW_WATCHLIST, true);
         DEFAULTS.put(ROW_ON_NOW, false);
     }
@@ -110,13 +116,45 @@ public final class Settings {
      * "English"); empty means the device's language.
      */
     public static List<String> subtitleLanguages(Context context) {
+        return languages(string(context, SUBTITLE_LANGUAGES));
+    }
+
+    /** Audio languages as ISO 639-2 codes, best first; empty means the device's language. */
+    public static List<String> audioLanguages(Context context) {
+        return languages(string(context, AUDIO_LANGUAGES));
+    }
+
+    /** "en, French, spa" as ["eng", "fra", "spa"]; the device's language when empty. */
+    static List<String> languages(String text) {
         List<String> out = new ArrayList<>();
-        for (String part : string(context, SUBTITLE_LANGUAGES).split(",")) {
-            String lang = part.trim();
-            if (!lang.isEmpty()) out.add(lang.toLowerCase(Locale.ROOT));
+        for (String part : text.split("[,;/]")) {
+            String lang = part.trim().toLowerCase(Locale.ROOT);
+            if (lang.isEmpty()) continue;
+            String code = code(lang);
+            if (code != null && !out.contains(code)) out.add(code);
         }
         if (out.isEmpty()) out.add(Locale.getDefault().getISO3Language());
         return out;
+    }
+
+    private static String code(String lang) {
+        if (lang.matches("[a-z]{2,3}")) {
+            try {
+                return new Locale(lang).getISO3Language();
+            } catch (java.util.MissingResourceException e) {
+                return lang;
+            }
+        }
+        for (Locale l : Locale.getAvailableLocales()) {
+            if (l.getDisplayLanguage(Locale.ENGLISH).equalsIgnoreCase(lang)) {
+                try {
+                    return l.getISO3Language();
+                } catch (java.util.MissingResourceException e) {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
     /** A profile's settings for the web page. */

@@ -7,7 +7,22 @@
     android:background="@color/guide_background"
     android:clipChildren="false">
 
+    <!-- The artwork full screen, soft and darkened, with the same artwork windowed at the top
+         right over it, its edges fading into it. -->
     <ImageView
+        android:id="@+id/backdrop_full"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:importantForAccessibility="no" />
+
+    <View
+        android:id="@+id/backdrop_dim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#D10E0F14" />
+
+    <com.shiggsy365.bingetvredux.EdgeFadeImageView
         android:id="@+id/backdrop"
         android:layout_width="match_parent"
         android:layout_height="@dimen/hero_backdrop_height"
@@ -15,28 +30,26 @@
         android:scaleType="centerCrop"
         android:importantForAccessibility="no" />
 
-    <!-- A trailer playing over the backdrop (if the profile has them on). -->
+    <!-- A trailer (if the profile has them on): a window at the top right, 60% of the screen
+         each way, once the artwork has faded to black. -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/hero_video"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/hero_backdrop_height"
-        android:layout_marginStart="280dp"
+        android:layout_width="576dp"
+        android:layout_height="324dp"
+        android:layout_gravity="top|end"
         android:alpha="0"
         android:focusable="false"
-        app:resize_mode="zoom"
+        app:resize_mode="fit"
         app:shutter_background_color="@android:color/transparent"
         app:surface_type="texture_view"
         app:use_controller="false" />
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/hero_backdrop_height"
-        android:background="@drawable/hero_fade_left" />
+
 
     <View
         android:layout_width="match_parent"
-        android:layout_height="@dimen/hero_backdrop_height"
-        android:background="@drawable/hero_fade_bottom" />
+        android:layout_height="130dp"
+        android:background="@drawable/top_scrim" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -54,13 +67,36 @@
             android:paddingEnd="@dimen/screen_margin"
             android:paddingTop="20dp">
 
-            <ImageView
+            <!-- The logo opens profiles and settings; focused, a red underline as the menu's. -->
+            <LinearLayout
+                android:id="@+id/menu_logo"
                 android:layout_width="wrap_content"
-                android:layout_height="30dp"
-                android:layout_marginEnd="24dp"
-                android:adjustViewBounds="true"
-                android:contentDescription="@string/app_name"
-                android:src="@drawable/logo_redux" />
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="18dp"
+                android:clickable="true"
+                android:contentDescription="Profiles and settings"
+                android:focusable="true"
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:paddingStart="6dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="6dp">
+
+                <ImageView
+                    android:layout_width="wrap_content"
+                    android:layout_height="30dp"
+                    android:adjustViewBounds="true"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/logo_redux" />
+
+                <View
+                    android:id="@+id/menu_logo_underline"
+                    android:layout_width="match_parent"
+                    android:layout_height="3dp"
+                    android:layout_marginTop="4dp"
+                    android:alpha="0"
+                    android:background="@drawable/menu_underline" />
+            </LinearLayout>
 
             <LinearLayout
                 android:id="@+id/menu_items"
@@ -73,63 +109,91 @@
                 android:id="@+id/clock"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:shadowColor="#CC000000"
+                android:shadowRadius="4"
                 android:textColor="@color/guide_text"
                 android:textSize="18sp" />
         </LinearLayout>
 
+        <!-- The focused title, as BingeTV's: a centred column at the left with its logo (or
+             name), what to watch next, chips for its facts and genres, and its plot. -->
         <LinearLayout
             android:id="@+id/hero"
-            android:layout_width="match_parent"
+            android:layout_width="316dp"
             android:layout_height="@dimen/hero_height"
+            android:layout_marginStart="43dp"
+            android:gravity="center_horizontal"
             android:orientation="vertical"
-            android:paddingStart="@dimen/screen_margin"
-            android:paddingTop="20dp">
+            android:paddingTop="14dp">
 
-            <ImageView
-                android:id="@+id/hero_logo"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:adjustViewBounds="true"
-                android:maxHeight="96dp"
-                android:maxWidth="420dp"
-                android:scaleType="fitStart"
-                android:importantForAccessibility="no" />
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="62dp">
+
+                <ImageView
+                    android:id="@+id/hero_logo"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="fitCenter"
+                    android:importantForAccessibility="no" />
+
+                <TextView
+                    android:id="@+id/hero_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:gravity="center"
+                    android:maxLines="2"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="24sp" />
+            </FrameLayout>
 
             <TextView
-                android:id="@+id/hero_title"
-                android:layout_width="560dp"
+                android:id="@+id/hero_subtitle"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:fontFamily="sans-serif-medium"
-                android:maxLines="2"
+                android:layout_marginTop="7dp"
                 android:ellipsize="end"
-                android:textColor="@color/guide_text"
-                android:textSize="32sp" />
+                android:gravity="center"
+                android:singleLine="true"
+                android:textColor="#FFFFFFFF"
+                android:textSize="16sp"
+                android:visibility="gone" />
 
-            <TextView
-                android:id="@+id/hero_meta"
+            <LinearLayout
+                android:id="@+id/hero_facts"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:textColor="@color/guide_muted"
-                android:textSize="14sp" />
+                android:layout_marginTop="7dp"
+                android:orientation="horizontal" />
 
-            <TextView
+            <LinearLayout
+                android:id="@+id/hero_genres"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal" />
+
+            <com.shiggsy365.bingetvredux.ScrollingText
                 android:id="@+id/hero_desc"
-                android:layout_width="560dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="7dp"
                 android:ellipsize="end"
-                android:lineSpacingExtra="2dp"
+                android:lineSpacingExtra="1dp"
                 android:maxLines="3"
-                android:textColor="@color/guide_text"
-                android:textSize="15sp" />
+                android:textColor="#FFEEEEEE"
+                android:textSize="13sp" />
         </LinearLayout>
 
+        <!-- Rows scrolling up are clipped here (fading out over the top edge) rather than
+             drawn over the hero until they're recycled. -->
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:clipChildren="false">
+            android:clipChildren="true">
 
             <androidx.leanback.widget.VerticalGridView
                 android:id="@+id/rows"
@@ -137,7 +201,9 @@
                 android:layout_height="match_parent"
                 android:clipChildren="false"
                 android:clipToPadding="false"
-                android:paddingBottom="48dp" />
+                android:fadingEdgeLength="36dp"
+                android:paddingBottom="48dp"
+                android:requiresFadingEdge="vertical" />
 
             <TextView
                 android:id="@+id/empty"

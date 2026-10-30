@@ -33,7 +33,8 @@ import java.util.concurrent.Future;
  *   POST /api/catalogs/update            {key, shown?, name?, hub?, search?,
  *                                        searchName?, move?: -1|1, moveSearch?: -1|1}
  *   POST /api/hubs                       {name} — a hub of the user's own
- *   POST /api/hubs/update                {id, name} — "" gives a built-in hub its own name
+ *   POST /api/hubs/update                {id, name?, icon?} — "" gives a built-in hub its own
+ *                                        name (or a hub its usual icon)
  *   POST /api/hubs/delete                {id}
  */
 final class AddonsApi {
@@ -63,7 +64,14 @@ final class AddonsApi {
                 store().createHub(body.optString("name"));
                 return catalogs();
             case "/api/hubs/update":
-                store().renameHub(body.getString("id"), body.optString("name"));
+                if (body.has("icon")) {
+                    String icon = body.optString("icon");
+                    if (!icon.isEmpty() && !MenuIcons.HUB_ICONS.containsKey(icon)) {
+                        throw new IllegalArgumentException("There's no icon " + icon);
+                    }
+                    store().setHubIcon(body.getString("id"), icon);
+                }
+                if (body.has("name")) store().renameHub(body.getString("id"), body.optString("name"));
                 return catalogs();
             case "/api/hubs/delete":
                 store().removeHub(body.getString("id"));
@@ -162,7 +170,8 @@ final class AddonsApi {
                         .put("hub", hub.id));
             }
             hubs.put(new JSONObject().put("id", hub.id).put("name", hub.name)
-                    .put("custom", hub.custom).put("catalogs", entries));
+                    .put("custom", hub.custom).put("catalogs", entries)
+                    .put("icon", hub.icon.isEmpty() ? MenuIcons.defaultFor(hub.id) : hub.icon));
         }
         JSONArray search = new JSONArray();
         for (AddonStore.Entry e : store().searchEntries()) {
@@ -175,7 +184,8 @@ final class AddonsApi {
                     .put("people", e.catalog.isPeopleSearch())
                     .put("enabled", e.prefs().search));
         }
-        return new JSONObject().put("hubs", hubs).put("search", search);
+        return new JSONObject().put("hubs", hubs).put("search", search)
+                .put("icons", MenuIcons.toJson());
     }
 
     private JSONObject updateCatalog(JSONObject body) throws Exception {

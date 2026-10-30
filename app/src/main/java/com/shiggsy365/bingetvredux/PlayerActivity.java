@@ -81,24 +81,16 @@ public class PlayerActivity extends Activity {
 
     private PlayerView mPlayerView;
     private ProgressBar mBuffering;
-    private View mOverlay;
-    private ImageView mOverlayLogo;
-    private TextView mOverlayChannel;
-    private TextView mOverlayBadge;
-    private TextView mOverlayNow;
-    private ProgressBar mOverlayProgress;
-    private TextView mOverlayNext;
-    private View mOverlayButtons;
-    private TextView mBtnPlay;
-    private TextView mBtnStartOver;
-    private TextView mBtnLive;
-    private TextView mBtnStreams;
-    private TextView mBtnSubtitles;
+    private Osd mOsd;
+    private SubtitleDriver mSubtitleDriver;
+    private View mChannelsButton;
 
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
     private DateFormat mTimeFormat;
     private ExoPlayer mPlayer;
+    // Puts the TV in the display mode that suits the video (see FrameRateMatcher).
+    private FrameRateMatcher mFrameRate;
     private List<GuideData.Channel> mChannels = Collections.emptyList();
     private int mIndex;
     private SharedPreferences mPrefs;
@@ -126,18 +118,6 @@ public class PlayerActivity extends Activity {
     private String mCatchupTitle;
     private long mRecordingStart;
 
-    private final Runnable mHideOverlay = () -> {
-        mOverlay.setVisibility(View.GONE);
-        mPlayerView.requestFocus();
-    };
-    private final Runnable mOverlayTick = new Runnable() {
-        @Override
-        public void run() {
-            if (mOverlay.getVisibility() != View.VISIBLE) return;
-            bindPrograms(mChannels.get(mIndex));
-            mHandler.postDelayed(this, OVERLAY_TICK_MS);
-        }
-    };
     private final Runnable mWatchdog = new Runnable() {
         @Override
         public void run() {
@@ -149,6 +129,8 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Live TV's display mode now, while the screen opens, not when its video starts.
+        FrameRateMatcher.prepare(this, FrameRateMatcher.LIVE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.player_activity);
         mTimeFormat = android.text.format.DateFormat.getTimeFormat(this);
@@ -158,24 +140,7 @@ public class PlayerActivity extends Activity {
         mPlayerView = findViewById(R.id.player_view);
         mPlayerView.setUseController(false);
         mBuffering = findViewById(R.id.buffering);
-        mOverlay = findViewById(R.id.overlay);
-        mOverlayLogo = findViewById(R.id.overlay_logo);
-        mOverlayChannel = findViewById(R.id.overlay_channel);
-        mOverlayBadge = findViewById(R.id.overlay_badge);
-        mOverlayNow = findViewById(R.id.overlay_now);
-        mOverlayProgress = findViewById(R.id.overlay_progress);
-        mOverlayNext = findViewById(R.id.overlay_next);
-        mOverlayButtons = findViewById(R.id.overlay_buttons);
-        mBtnPlay = findViewById(R.id.btn_play);
-        mBtnStartOver = findViewById(R.id.btn_start_over);
-        mBtnLive = findViewById(R.id.btn_live);
-        mBtnStreams = findViewById(R.id.btn_streams);
-        mBtnSubtitles = findViewById(R.id.btn_subtitles);
-        mBtnPlay.setOnClickListener(v -> togglePause());
-        mBtnStartOver.setOnClickListener(v -> startOver());
-        mBtnLive.setOnClickListener(v -> tune(mIndex));
-        mBtnStreams.setOnClickListener(v -> showStreamMenu());
-        mBtnSubtitles.setOnClickListener(v -> toggleSubtitles());
+        setUpOsd();
 
         GuideData.Group group = GuideData.lastGroup(
                 getIntent().getStringExtra(EXTRA_GROUP_ID));
@@ -217,70 +182,45 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onDestroy() {
         mHandler.removeCallbacksAndMessages(null);
+        if (mOsd != null) mOsd.release();
+        if (mSubtitleDriver != null) mSubtitleDriver.release();
         mExecutor.shutdownNow();
         super.onDestroy();
     }
 
     // ---- Keys ----
 
+    /**
+     * Up/Down (with the OSD closed) and the channel keys change channel; Menu lists the
+     * channel's streams; everything else is the OSD's (Back with it closed leaves).
+     */
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         int key = event.getKeyCode();
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
-        boolean overlay = mOverlay.getVisibility() == View.VISIBLE;
-        // While a banner button has focus, Left/Right/OK belong to the buttons.
-        boolean onButton = overlay && mOverlayButtons.hasFocus();
-        if (overlay) scheduleHide();
+        boolean osd = mOsd.isBusy();
         switch (key) {
-            case KeyEvent.KEYCODE_DPAD_UP:
             case KeyEvent.KEYCODE_CHANNEL_UP:
-                if (down) zap(-1);
-                return true;
-            case KeyEvent.KEYCODE_DPAD_DOWN:
             case KeyEvent.KEYCODE_CHANNEL_DOWN:
-                if (down) zap(1);
+                if (down) zap(key == KeyEvent.KEYCODE_CHANNEL_UP ? -1 : 1);
                 return true;
-            case KeyEvent.KEYCODE_DPAD_LEFT:
-            case KeyEvent.KEYCODE_DPAD_RIGHT:
-                if (onButton) break;
-                if (down) {
-                    if (mCatchupStart > 0) {
-                        skip(key == KeyEvent.KEYCODE_DPAD_LEFT ? -SKIP_MS : SKIP_MS);
-                    } else {
-                        showOverlay(false);
-                    }
-                }
-                return true;
-            case KeyEvent.KEYCODE_DPAD_CENTER:
-            case KeyEvent.KEYCODE_ENTER:
-                if (onButton) break;
-                if (!down) showOverlay(true);
-                return true;
-            case KeyEvent.KEYCODE_INFO:
-                if (!down) showOverlay(true);
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (osd) break;
+                if (down) zap(key == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1);
                 return true;
             case KeyEvent.KEYCODE_MENU:
                 if (!down) showStreamMenu();
                 return true;
-            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-            case KeyEvent.KEYCODE_MEDIA_PLAY:
-            case KeyEvent.KEYCODE_MEDIA_PAUSE:
-                if (!down && mCatchupStart > 0) togglePause();
+            case KeyEvent.KEYCODE_INFO:
+                if (!down) showOverlay(true);
                 return true;
-            case KeyEvent.KEYCODE_MEDIA_REWIND:
-            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                if (down && mCatchupStart > 0) {
-                    skip(key == KeyEvent.KEYCODE_MEDIA_REWIND ? -SKIP_LONG_MS : SKIP_LONG_MS);
-                }
-                return true;
-            case KeyEvent.KEYCODE_BACK:
-                if (overlay) {
-                    if (!down) mHideOverlay.run();
-                    return true;
-                }
-                break;
             default:
                 break;
+        }
+        if (mOsd.onKey(event)) {
+            if (!osd && mOsd.isShowing()) refreshOsd();
+            return true;
         }
         return super.dispatchKeyEvent(event);
     }
@@ -390,6 +330,9 @@ public class PlayerActivity extends Activity {
         mLastProgressMs = mStreamStartMs;
 
         mPlayer = Players.build(this);
+
+        mFrameRate = FrameRateMatcher.attach(this, mPlayer, FrameRateMatcher.LIVE);
+        mSubtitleDriver.attach(mPlayer);
         applySubtitles();
         mPlayerView.setPlayer(mPlayer);
         mPlayer.addListener(new Player.Listener() {
@@ -411,7 +354,7 @@ public class PlayerActivity extends Activity {
 
             @Override
             public void onIsPlayingChanged(boolean isPlaying) {
-                updateButtons();
+                if (mOsd.isShowing()) refreshOsd();
             }
 
             @Override
@@ -519,21 +462,10 @@ public class PlayerActivity extends Activity {
         mPlayer.setPlayWhenReady(!mPlayer.getPlayWhenReady());
         // A pause isn't a stall.
         mLastProgressMs = System.currentTimeMillis();
-        showOverlay(mOverlayButtons.hasFocus());
+        showOverlay(false);
     }
 
     // ---- Subtitles ----
-
-    private void toggleSubtitles() {
-        mSubtitles = !mSubtitles;
-        mPrefs.edit().putBoolean(PREF_SUBTITLES, mSubtitles).apply();
-        applySubtitles();
-        updateButtons();
-        if (mSubtitles && mPlayer != null
-                && !mPlayer.getCurrentTracks().containsType(C.TRACK_TYPE_TEXT)) {
-            Toast.makeText(this, "This stream has no subtitles", Toast.LENGTH_SHORT).show();
-        }
-    }
 
     /** Subtitles on picks the device language's track, or any untagged one (e.g. captions). */
     private void applySubtitles() {
@@ -655,6 +587,10 @@ public class PlayerActivity extends Activity {
     private void releasePlayer() {
         if (mPlayer != null) {
             mPlayerView.setPlayer(null);
+            if (mFrameRate != null) {
+                mFrameRate.release();
+                mFrameRate = null;
+            }
             mPlayer.release();
             mPlayer = null;
             Connections.released(mPlayerSource);
@@ -663,112 +599,133 @@ public class PlayerActivity extends Activity {
 
     // ---- Banner ----
 
-    /** Shows the banner; with focusButtons, the first button takes focus. */
+    // ---- OSD ----
+
+    /** The OSD with live TV's buttons: channels, catch-up, streams, the guide. */
+    private void setUpOsd() {
+        mOsd = new Osd(this, mPlayerView, new Osd.Host() {
+            @Override
+            ExoPlayer player() {
+                return mPlayer;
+            }
+
+            @Override
+            void stop() {
+                finish();
+            }
+
+            @Override
+            boolean live() {
+                return true;
+            }
+
+            @Override
+            long[] programme() {
+                GuideData.Program p = mChannels.isEmpty() ? null : mChannels.get(mIndex).now;
+                return mCatchupStart > 0 || p == null ? null : new long[]{p.startMs, p.endMs};
+            }
+
+            @Override
+            long[] timeline() {
+                if (mCatchupStart == 0) return null;
+                return new long[]{Math.max(0, position() - mCatchupStart),
+                        Math.max(1, mCatchupEnd - mCatchupStart)};
+            }
+
+            @Override
+            boolean canSeek() {
+                return mCatchupStart > 0;
+            }
+
+            @Override
+            boolean canPause() {
+                return mCatchupStart > 0;
+            }
+
+            @Override
+            boolean seekBy(long ms) {
+                skip(ms);
+                return true;
+            }
+        });
+        mOsd.button(Osd.PREVIOUS, "Previous channel", () -> zap(-1), () -> mChannels.size() > 1);
+        mOsd.addPlaybackButtons();
+        mOsd.button(Osd.NEXT, "Next channel", () -> zap(1), () -> mChannels.size() > 1);
+        mOsd.button(Osd.STREAMS, "Change stream", this::showStreamMenu,
+                () -> mChannels.get(mIndex).streams.size() > 1);
+        mOsd.button(Osd.START_OVER, "Start over", this::startOver, () -> {
+            GuideData.Channel channel = mChannels.get(mIndex);
+            return mCatchupStart > 0 || (channel.now != null
+                    && channel.canCatchUp(channel.now, System.currentTimeMillis()));
+        });
+        mOsd.button(MenuIcons.LIVE, "Back to live", () -> tune(mIndex), () -> mCatchupStart > 0);
+        mChannelsButton = mOsd.button(Osd.CHANNELS, "Channels", this::showChannels, () -> mChannels.size() > 1);
+        mOsd.button(Osd.GUIDE, "Guide", this::finish, null);
+        mOsd.addSettingsButtons();
+        if (mPlayerView.getSubtitleView() != null) mPlayerView.getSubtitleView().setVisibility(View.GONE);
+        mSubtitleDriver = new SubtitleDriver(findViewById(R.id.subtitles));
+        mOsd.setSubtitles(mSubtitleDriver, null);
+    }
+
+    /** Opens (or refreshes) the OSD. */
     private void showOverlay(boolean focusButtons) {
+        refreshOsd();
+        mOsd.show(false);
+    }
+
+    /** The banner: channel, what's on (or the catch-up programme), what's next. */
+    private void refreshOsd() {
         GuideData.Channel channel = mChannels.get(mIndex);
-        String title = channel.number + "  " + channel.name;
-        if (channel.streams.size() > 1) {
-            title += "   ·   Stream " + (mStreamIndex + 1) + " of " + channel.streams.size();
-        }
-        mOverlayChannel.setText(title);
-        int days = channel.catchupDays();
-        mOverlayBadge.setVisibility(days > 0 ? View.VISIBLE : View.GONE);
-        mOverlayBadge.setBackgroundResource(mCatchupStart > 0
-                ? R.drawable.chip_catchup : R.drawable.chip_small);
-        mOverlayBadge.setText(mCatchupStart > 0 ? "Watching catch-up"
-                : "Catch-up " + days + (days == 1 ? " day" : " days"));
-        bindPrograms(channel);
-        updateButtons();
-        mOverlayLogo.setImageBitmap(GuideData.cachedLogo(channel.id));
+        bindOsd(channel);
+        mOsd.setLogo(GuideData.cachedLogo(channel.id));
         long channelId = channel.id;
         mExecutor.execute(() -> {
             Bitmap logo = GuideData.logo(getApplicationContext(), channelId);
-            // Programs may have moved on since the guide loaded.
-            GuideData.refreshPrograms(getApplicationContext(),
-                    Collections.singletonList(channel));
+            // Programmes may have moved on since the guide loaded.
+            GuideData.refreshPrograms(getApplicationContext(), Collections.singletonList(channel));
             runOnUiThread(() -> {
                 if (isDestroyed() || mChannels.get(mIndex).id != channelId) return;
-                mOverlayLogo.setImageBitmap(logo);
-                bindPrograms(channel);
-                updateButtons();
+                mOsd.setLogo(logo);
+                bindOsd(channel);
             });
         });
-        boolean wasVisible = mOverlay.getVisibility() == View.VISIBLE;
-        mOverlay.setVisibility(View.VISIBLE);
-        if (focusButtons) {
-            if (!mOverlayButtons.hasFocus()) firstButton().requestFocus();
-        } else if (!wasVisible) {
-            mPlayerView.requestFocus();
-        }
-        scheduleHide();
-        mHandler.removeCallbacks(mOverlayTick);
-        mHandler.postDelayed(mOverlayTick, OVERLAY_TICK_MS);
     }
 
-    private void scheduleHide() {
-        mHandler.removeCallbacks(mHideOverlay);
-        mHandler.postDelayed(mHideOverlay, OVERLAY_MS);
-    }
-
-    private View firstButton() {
-        for (View b : new View[]{mBtnPlay, mBtnStartOver, mBtnLive, mBtnStreams, mBtnSubtitles}) {
-            if (b.getVisibility() == View.VISIBLE) return b;
-        }
-        return mBtnSubtitles;
-    }
-
-    private void updateButtons() {
-        GuideData.Channel channel = mChannels.get(mIndex);
-        boolean catchup = mCatchupStart > 0;
-        GuideData.Program now = channel.now;
-        mBtnPlay.setVisibility(catchup ? View.VISIBLE : View.GONE);
-        mBtnPlay.setText(mPlayer != null && !mPlayer.getPlayWhenReady() ? "Play" : "Pause");
-        mBtnLive.setVisibility(catchup ? View.VISIBLE : View.GONE);
-        mBtnStartOver.setVisibility(catchup || (now != null
-                && channel.canCatchUp(now, System.currentTimeMillis())) ? View.VISIBLE : View.GONE);
-        mBtnStreams.setVisibility(channel.streams.size() > 1 ? View.VISIBLE : View.GONE);
-        mBtnSubtitles.setText(mSubtitles ? "Subtitles: On" : "Subtitles: Off");
-        // Focus mustn't stay on a button that just went away.
-        View focused = getCurrentFocus();
-        if (focused != null && focused.getVisibility() != View.VISIBLE
-                && mOverlay.getVisibility() == View.VISIBLE) {
-            firstButton().requestFocus();
-        }
-    }
-
-    private void bindPrograms(GuideData.Channel channel) {
+    private void bindOsd(GuideData.Channel channel) {
+        String title = channel.number + "  " + channel.name;
+        String line, plot;
         if (mCatchupStart > 0) {
-            bindRecording();
-            return;
-        }
-        GuideData.Program p = channel.now;
-        String now = p != null ? mTimeFormat.format(new Date(p.startMs)) + " – "
-                + mTimeFormat.format(new Date(p.endMs)) + "   " + p.title : "";
-        if (channel.streams.size() > 1) {
-            now = (now.isEmpty() ? "" : now + "   ·   ")
-                    + channel.streamNames.get(Math.min(mStreamIndex, channel.streamNames.size() - 1));
-        }
-        mOverlayNow.setText(now);
-        mOverlayProgress.setVisibility(p != null ? View.VISIBLE : View.GONE);
-        if (p != null) {
-            mOverlayProgress.setProgress((int) (p.progress(System.currentTimeMillis()) * 1000));
+            line = "Catch-up  ·  " + mTimeFormat.format(new Date(mCatchupStart)) + " – "
+                    + mTimeFormat.format(new Date(mCatchupEnd))
+                    + (mCatchupTitle == null ? "" : "  " + mCatchupTitle);
+            plot = "";
+        } else {
+            GuideData.Program p = channel.now;
+            line = p == null ? "" : mTimeFormat.format(new Date(p.startMs)) + " – "
+                    + mTimeFormat.format(new Date(p.endMs)) + "  " + p.title;
+            plot = p == null || p.description == null ? "" : p.description;
         }
         GuideData.Program next = channel.next;
-        mOverlayNext.setText(next != null
-                ? "Next  " + mTimeFormat.format(new Date(next.startMs)) + "  " + next.title : "");
+        String below = next != null && mCatchupStart == 0
+                ? "Next  " + mTimeFormat.format(new Date(next.startMs)) + "  " + next.title : "";
+        if (channel.streams.size() > 1) {
+            String stream = "Stream " + (mStreamIndex + 1) + " of " + channel.streams.size() + ": "
+                    + channel.streamNames.get(Math.min(mStreamIndex, channel.streamNames.size() - 1));
+            below = below.isEmpty() ? stream : below + "   ·   " + stream;
+        }
+        mOsd.setInfo(title, null, line, below, plot);
+        mOsd.setLogo(GuideData.cachedLogo(channel.id));
     }
 
-    /** The banner during catch-up: the programme, how far in, and the skip keys. */
-    private void bindRecording() {
-        long length = Math.max(1, mCatchupEnd - mCatchupStart);
-        long at = Math.max(0, Math.min(length, position() - mCatchupStart));
-        mOverlayNow.setText(mTimeFormat.format(new Date(mCatchupStart)) + " – "
-                + mTimeFormat.format(new Date(mCatchupEnd)) + "   "
-                + (mCatchupTitle == null ? "" : mCatchupTitle)
-                + "   ·   " + clock(at) + " / " + clock(length));
-        mOverlayProgress.setVisibility(View.VISIBLE);
-        mOverlayProgress.setProgress((int) (at * 1000 / length));
-        mOverlayNext.setText("◀ ▶  skip 30 s     ⏪ ⏩  skip 2 min");
+    /** The group's channels, with what's on; picking one tunes it. */
+    private void showChannels() {
+        List<String> labels = new java.util.ArrayList<>();
+        for (GuideData.Channel c : mChannels) {
+            labels.add(c.number + "  " + c.name + (c.now == null ? "" : "  ·  " + c.now.title));
+        }
+        ChoiceMenu.show(mChannelsButton, "Channels", labels, mIndex, index -> {
+            if (index != mIndex) tune(index);
+        }, null);
     }
 
     private static String clock(long ms) {

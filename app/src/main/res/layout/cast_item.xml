@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Someone in the cast: round photo, name and role. Selecting them searches their name. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="78dp"
+    android:layout_height="115dp"
+    android:focusable="true"
+    android:clickable="true"
+    android:gravity="center_horizontal"
+    android:orientation="vertical">
+
+    <FrameLayout
+        android:id="@+id/cast_photo_frame"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_marginTop="3dp"
+        android:background="@drawable/cast_placeholder"
+        android:duplicateParentState="true"
+        android:foreground="@drawable/cast_ring">
+
+        <ImageView
+            android:id="@+id/cast_photo"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:importantForAccessibility="no" />
+
+        <TextView
+            android:id="@+id/cast_initials"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:textColor="#FFD0D0D0"
+            android:textSize="20sp" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/cast_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="7dp"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:singleLine="true"
+        android:textColor="#FFFFFFFF"
+        android:textSize="11sp" />
+
+    <TextView
+        android:id="@+id/cast_role"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="1dp"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:singleLine="true"
+        android:textColor="#FF9A9A9A"
+        android:textSize="11sp" />
+</LinearLayout>

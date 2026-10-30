@@ -95,6 +95,8 @@ public final class WatchStore {
     private final List<Runnable> mListeners = new ArrayList<>();
     // Show or film id -> its most recent part-watched row; null until needed after a change.
     private Map<String, Row> mResumeByMeta;
+    // Show id -> "season:episode" of its watched episodes; null until needed after a change.
+    private Map<String, Set<String>> mWatchedByMeta;
     private int mVersion;
 
     private WatchStore(Context context, String profileId) {
@@ -159,6 +161,22 @@ public final class WatchStore {
         return mRows.get(videoId);
     }
 
+    /** Whether the show was taken off Next Up and nothing of it has been played since. */
+    public synchronized boolean isDismissed(String metaId) {
+        Long dismissed = mDismissed.get(metaId);
+        if (dismissed == null) return false;
+        for (Row r : mRows.values()) {
+            if (metaId.equals(r.entry.metaId) && Math.max(r.updatedAt, r.watchedAt) > dismissed) return false;
+        }
+        return true;
+    }
+
+    /** Watched, and MDBList already knows. */
+    public synchronized boolean isSyncedWatched(String videoId) {
+        Row r = mRows.get(videoId);
+        return r != null && r.watched && r.synced;
+    }
+
     public synchronized boolean isWatched(String videoId) {
         Row r = mRows.get(videoId);
         return r != null && r.watched;
@@ -197,7 +215,7 @@ public final class WatchStore {
         return mResumeByMeta.get(metaId);
     }
 
-    /** Shows with watched episodes, most recently active first: {show id, type}. */
+    /** Shows with watched episodes, most recently active first: {show id, type, last active ms}. */
     public synchronized List<String[]> recentShows(int limit) {
         Set<String> withWatched = new HashSet<>();
         for (Row r : mRows.values()) {
@@ -220,7 +238,7 @@ public final class WatchStore {
         for (Map.Entry<String, Long> e : list) {
             Long dismissed = mDismissed.get(e.getKey());
             if (dismissed != null && e.getValue() <= dismissed) continue;
-            out.add(new String[]{e.getKey(), types.get(e.getKey())});
+            out.add(new String[]{e.getKey(), types.get(e.getKey()), String.valueOf(e.getValue())});
             if (out.size() >= limit) break;
         }
         return out;
@@ -228,13 +246,24 @@ public final class WatchStore {
 
     /** "season:episode" of the show's watched episodes. */
     public synchronized Set<String> watchedEpisodes(String metaId) {
-        Set<String> out = new HashSet<>();
-        for (Row r : mRows.values()) {
-            if (r.watched && r.entry.isEpisode() && metaId.equals(r.entry.metaId)) {
-                out.add(r.entry.season + ":" + r.entry.episode);
+        if (mWatchedByMeta == null) {
+            // Built when first needed after a change: with thousands of episodes watched,
+            // scanning every row for each poster and episode card added up.
+            mWatchedByMeta = new HashMap<>();
+            for (Row r : mRows.values()) {
+                if (!r.watched || !r.entry.isEpisode()) continue;
+                mWatchedByMeta.computeIfAbsent(r.entry.metaId, k -> new HashSet<>())
+                        .add(r.entry.season + ":" + r.entry.episode);
             }
         }
-        return out;
+        Set<String> watched = mWatchedByMeta.get(metaId);
+        return watched == null ? new HashSet<>() : new HashSet<>(watched);
+    }
+
+    /** Whether any of the show's episodes have been watched. */
+    public synchronized boolean hasWatchedEpisodes(String metaId) {
+        if (mWatchedByMeta == null) watchedEpisodes(metaId);
+        return mWatchedByMeta.containsKey(metaId);
     }
 
     /** The source group last used for a show, so the next episode can come from it too. */
@@ -308,15 +337,22 @@ public final class WatchStore {
     public void setWatched(List<Entry> entries, boolean watched) {
         synchronized (this) {
             long now = System.currentTimeMillis();
-            for (Entry entry : entries) {
-                Row row = merged(entry);
-                if (row.watched == watched && row.positionMs == 0) continue;
-                row.watched = watched;
-                row.positionMs = 0;
-                row.watchedAt = watched ? now : 0;
-                row.synced = false;
-                if (watched) row.updatedAt = now;
-                write(row);
+            SQLiteDatabase db = mHelper.getWritableDatabase();
+            db.beginTransaction();
+            try {
+                for (Entry entry : entries) {
+                    Row row = merged(entry);
+                    if (row.watched == watched && row.positionMs == 0) continue;
+                    row.watched = watched;
+                    row.positionMs = 0;
+                    row.watchedAt = watched ? now : 0;
+                    row.synced = false;
+                    if (watched) row.updatedAt = now;
+                    write(row);
+                }
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
             }
         }
         changed();
@@ -353,12 +389,19 @@ public final class WatchStore {
     }
 
     public synchronized void markSynced(List<String> videoIds) {
-        for (String id : videoIds) {
-            Row row = mRows.get(id);
-            if (row != null && !row.synced) {
-                row.synced = true;
-                write(row);
+        SQLiteDatabase db = mHelper.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            for (String id : videoIds) {
+                Row row = mRows.get(id);
+                if (row != null && !row.synced) {
+                    row.synced = true;
+                    write(row);
+                }
             }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
         }
     }
 
@@ -369,21 +412,67 @@ public final class WatchStore {
     public int mergeRemote(List<Entry> entries, List<Long> watchedAt) {
         int added = 0;
         synchronized (this) {
-            for (int i = 0; i < entries.size(); i++) {
-                Row row = merged(entries.get(i));
-                if (row.watched && row.synced) continue;
-                if (!row.watched) added++;
-                row.watched = true;
-                row.synced = true;
-                row.positionMs = 0;
-                long at = watchedAt.get(i);
-                row.watchedAt = at > 0 ? at : (row.watchedAt > 0 ? row.watchedAt : System.currentTimeMillis());
-                row.updatedAt = Math.max(row.updatedAt, row.watchedAt);
-                write(row);
+            SQLiteDatabase db = mHelper.getWritableDatabase();
+            // One transaction: committing each of thousands of rows on its own took minutes
+            // on a Fire TV Stick.
+            db.beginTransaction();
+            try {
+                for (int i = 0; i < entries.size(); i++) {
+                    Row existing = mRows.get(entries.get(i).videoId);
+                    if (existing != null && existing.watched && existing.synced) continue;
+                    Row row = merged(entries.get(i));
+                    if (!row.watched) added++;
+                    row.watched = true;
+                    row.synced = true;
+                    row.positionMs = 0;
+                    long at = watchedAt.get(i);
+                    row.watchedAt = at > 0 ? at : (row.watchedAt > 0 ? row.watchedAt : System.currentTimeMillis());
+                    row.updatedAt = Math.max(row.updatedAt, row.watchedAt);
+                    write(row);
+                }
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
             }
         }
         if (added > 0) changed();
         return added;
+    }
+
+    /**
+     * Applies resume points from other devices (MDBList's paused sessions). One wins only if
+     * it's newer than what's known here, long enough to count and short of watched. Returns
+     * how many were applied.
+     */
+    public int mergeResume(List<Entry> entries, List<long[]> points, int watchedPercent) {
+        int applied = 0;
+        synchronized (this) {
+            SQLiteDatabase db = mHelper.getWritableDatabase();
+            db.beginTransaction();
+            try {
+                for (int i = 0; i < entries.size(); i++) {
+                    long position = points.get(i)[0], duration = points.get(i)[1], at = points.get(i)[2];
+                    if (duration <= 0 || position < MIN_RESUME_MS
+                            || position >= duration * watchedPercent / 100) {
+                        continue;
+                    }
+                    Row known = mRows.get(entries.get(i).videoId);
+                    if (known != null && at <= Math.max(known.updatedAt, known.watchedAt)) continue;
+                    Row row = merged(entries.get(i));
+                    row.positionMs = position;
+                    row.durationMs = duration;
+                    row.updatedAt = at;
+                    row.watched = false;
+                    write(row);
+                    applied++;
+                }
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
+        }
+        if (applied > 0) changed();
+        return applied;
     }
 
     public void clear() {
@@ -394,6 +483,7 @@ public final class WatchStore {
             mRows.clear();
             mDismissed.clear();
             mResumeByMeta = null;
+            mWatchedByMeta = null;
         }
         changed();
     }
@@ -433,6 +523,7 @@ public final class WatchStore {
     private void write(Row row) {
         mRows.put(row.entry.videoId, row);
         mResumeByMeta = null;
+        mWatchedByMeta = null;
         Entry e = row.entry;
         ContentValues v = new ContentValues();
         v.put("video_id", e.videoId);

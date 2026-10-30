@@ -9,36 +9,18 @@
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        app:show_subtitle_button="true" />
+        android:focusable="true"
+        app:use_controller="false" />
 
-    <!-- What's playing, shown with the controls. -->
-    <LinearLayout
-        android:id="@+id/info"
+    <!-- Subtitles, drawn by SubtitleDriver (styled, and offset if asked). -->
+    <androidx.media3.ui.SubtitleView
+        android:id="@+id/subtitles"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@drawable/player_overlay_top"
-        android:orientation="vertical"
-        android:paddingStart="@dimen/screen_margin"
-        android:paddingEnd="@dimen/screen_margin"
-        android:paddingTop="28dp"
-        android:paddingBottom="40dp"
-        android:visibility="gone">
+        android:layout_height="match_parent" />
 
-        <TextView
-            android:id="@+id/info_title"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="sans-serif-medium"
-            android:textColor="#FFFFFFFF"
-            android:textSize="22sp" />
+    <include layout="@layout/osd" />
 
-        <TextView
-            android:id="@+id/info_stream"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="#CCFFFFFF"
-            android:textSize="14sp" />
-    </LinearLayout>
+    <include layout="@layout/subtitle_offset" />
 
     <!-- Up Next: the next episode, near the end of this one. -->
     <LinearLayout
