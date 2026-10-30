@@ -173,6 +173,11 @@
 </nav>
 <main>
   <section id="tab-addons">
+    <div class="row panel profile-pick">
+      <span>Addons and catalogs of</span>
+      <select class="addon-profile" style="width:auto"></select>
+      <span class="muted grow">Each profile has its own; a new profile starts with a copy of the one in use on the TV.</span>
+    </div>
     <div class="panel">
       <h2>Add an addon</h2>
       <p class="muted">Paste the addon's manifest URL (ending in manifest.json) or its
@@ -195,6 +200,11 @@
   </section>
 
   <section id="tab-catalogs" hidden>
+    <div class="row panel profile-pick">
+      <span>Addons and catalogs of</span>
+      <select class="addon-profile" style="width:auto"></select>
+      <span class="muted grow">Each profile has its own; a new profile starts with a copy of the one in use on the TV.</span>
+    </div>
     <div class="panel">
       <h2>Hubs</h2>
       <p class="muted">Each hub is a page on the TV's menu bar, with a row for each catalog
@@ -435,7 +445,33 @@ function setOffline(value) {
   $('offline').classList.toggle('show', value);
   if (!value) toast('Reconnected to the Fire Stick');
 }
+// The profile whose addons and catalogs the Addons and Catalogs tabs show (null: the TV's).
+let addonProfile = null;
+
+/** Fills the tabs' profile pickers; the profile in use on the TV until another is picked. */
+async function loadAddonProfiles() {
+  const saved = addonProfile;
+  addonProfile = null;
+  const data = await api('/api/profiles');
+  const ids = data.profiles.map(p => p.id);
+  addonProfile = ids.includes(saved) ? saved : (data.profiles.find(p => p.current) || data.profiles[0]).id;
+  const options = data.profiles.map(p => `<option value="${esc(p.id)}">${esc(p.name)}${p.current ? ' (on the TV)' : ''}</option>`).join('');
+  document.querySelectorAll('.addon-profile').forEach(el => {
+    el.innerHTML = options;
+    el.value = addonProfile;
+    el.onchange = () => run(async () => {
+      addonProfile = el.value;
+      document.querySelectorAll('.addon-profile').forEach(other => { other.value = addonProfile; });
+      await loadAddons();
+      await loadCatalogs();
+    });
+  });
+}
+
 async function api(path, body) {
+  if (addonProfile && /^\/api\/(addons|catalogs|hubs)/.test(path)) {
+    path += (path.includes('?') ? '&' : '?') + 'profile=' + encodeURIComponent(addonProfile);
+  }
   let res;
   try {
     res = await fetch(path, body === undefined ? {} :
@@ -492,8 +528,8 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
   ['addons', 'catalogs', 'profiles', 'groups', 'logos', 'guides', 'settings'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
   if (b.dataset.tab === 'profiles') run(loadProfiles);
-  if (b.dataset.tab === 'addons') run(loadAddons);
-  if (b.dataset.tab === 'catalogs') run(loadCatalogs);
+  if (b.dataset.tab === 'addons') run(async () => { await loadAddonProfiles(); await loadAddons(); });
+  if (b.dataset.tab === 'catalogs') run(async () => { await loadAddonProfiles(); await loadCatalogs(); });
   if (b.dataset.tab === 'logos') openLogos();
   if (b.dataset.tab === 'settings') $('prefMergeUpConfirm').checked = !pref('skipMergeUpConfirm');
 });
@@ -1263,7 +1299,7 @@ function start() {
   initCatalogs();
   initProfiles();
   run(async () => applyState(await api('/api/state')));
-  run(loadAddons);
+  run(async () => { await loadAddonProfiles(); await loadAddons(); });
 }
 // The TV's QR code opens the page with the PIN in the address: pair with it, then drop it
 // from the address so it isn't kept in the browser's history.

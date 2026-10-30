@@ -471,15 +471,26 @@ public final class Mdblist {
      * watchlist. Returns a summary for the web page.
      */
     public static String sync(Context context, boolean force) throws MdblistException {
+        return sync(context, Profiles.current(context).id, force);
+    }
+
+    /** Syncs any profile, in use on the TV or not, with its own MDBList key. */
+    public static String sync(Context context, String profileId, boolean force) throws MdblistException {
         synchronized (SYNC_LOCK) {
-            return syncLocked(context, force);
+            WatchStore store = WatchStore.forProfile(context, profileId);
+            try {
+                return syncLocked(context, profileId, store, force);
+            } finally {
+                store.close();
+            }
         }
     }
 
-    private static String syncLocked(Context context, boolean force) throws MdblistException {
-        String key = key(context);
+    private static String syncLocked(Context context, String profileId, WatchStore store, boolean force)
+            throws MdblistException {
+        String key = Settings.string(context, profileId, Settings.MDBLIST_KEY);
         if (key.isEmpty()) throw new MdblistException("Add an MDBList API key first");
-        WatchStore store = WatchStore.get(context);
+        boolean inUse = profileId.equals(Profiles.current(context).id);
         int pushed = 0, added = 0, resumes = 0, listed = -1;
         try {
             List<WatchStore.Row> pending = store.unsyncedWatched();
@@ -494,7 +505,8 @@ public final class Mdblist {
             }
             store.markSynced(pendingIds);
 
-            SharedPreferences prefs = syncPrefs(context);
+            SharedPreferences prefs = context.getApplicationContext().getSharedPreferences(
+                    "mdblist_" + profileId, Context.MODE_PRIVATE);
             Object activities = request(key, "GET", "/sync/last_activities", null, null);
             JSONObject marker = activities instanceof JSONObject
                     ? new JSONObject(activities.toString()) : new JSONObject();
@@ -505,11 +517,12 @@ public final class Mdblist {
             prefs.edit().putString("activities", marker.toString())
                     .putLong("syncedAt", System.currentTimeMillis()).apply();
             // Resume points from other devices: cheap, and not covered by the activity markers.
-            resumes = pullResumes(key, store, Settings.integer(context, Settings.WATCHED_PERCENT));
+            resumes = pullResumes(key, store, Settings.integer(context, profileId, Settings.WATCHED_PERCENT));
         } catch (JSONException e) {
             throw new MdblistException("MDBList's answer couldn't be read");
         }
-        if (force) listed = watchlist(context, true).size();
+        // The watchlist kept is the profile in use's.
+        if (force && inUse) listed = watchlist(context, true).size();
         return "Sent " + pushed + " watched, received " + added + " new"
                 + (resumes > 0 ? ", " + resumes + " resume points" : "")
                 + (listed >= 0 ? "; " + listed + " on the watchlist" : "");

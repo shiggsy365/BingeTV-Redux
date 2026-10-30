@@ -17,7 +17,7 @@ import java.util.Map;
  *   POST /api/profiles/update            {id, name?, settings?: {...}}
  *   POST /api/profiles/delete            {id} — with its history and settings
  *   POST /api/mdblist/test               {id} — checks the profile's MDBList key
- *   POST /api/mdblist/sync               {} — syncs the TV's current profile with MDBList now
+ *   POST /api/mdblist/sync               {id?} — syncs a profile with MDBList now (the one in use if no id)
  */
 final class ProfilesApi {
     private final Context mContext;
@@ -56,13 +56,18 @@ final class ProfilesApi {
                     throw new IllegalArgumentException(e.getMessage());
                 }
             }
-            case "/api/mdblist/sync":
+            case "/api/mdblist/sync": {
+                // The profile being edited on the web page (the one in use if none is given).
+                String id = body != null && body.has("id") ? body.getString("id") : Profiles.current(mContext).id;
+                Profiles.Profile profile = Profiles.get(mContext, id);
+                if (profile == null) throw new IllegalArgumentException("No such profile");
                 try {
-                    return new JSONObject().put("message", Mdblist.sync(mContext, true))
-                            .put("profile", Profiles.current(mContext).name);
+                    return new JSONObject().put("message", Mdblist.sync(mContext, id, true))
+                            .put("profile", profile.name);
                 } catch (Mdblist.MdblistException e) {
                     throw new IllegalArgumentException(e.getMessage());
                 }
+            }
             default:
                 return null;
         }

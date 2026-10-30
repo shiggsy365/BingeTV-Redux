@@ -101,7 +101,7 @@ function initProfiles() {
     } else if (btn.dataset.act === 'mdbsync') {
       btn.disabled = true;
       run(async () => {
-        try { const r = await api('/api/mdblist/sync', {}); toast(r.profile + ': ' + r.message); }
+        try { const r = await api('/api/mdblist/sync', {id: settingsProfile}); toast(r.profile + ': ' + r.message); }
         finally { btn.disabled = false; }
       });
     }
@@ -142,7 +142,7 @@ function renderProfileSettings() {
         ${section.fields.map(f => fieldHtml(f, s[f.key])).join('')}
         ${section.mdblist ? `<div class="row" style="margin-top:8px">
             <button class="btn" data-act="mdbtest">Test the key</button>
-            <button class="btn" data-act="mdbsync"${p.current ? '' : ' disabled title="Syncs the profile in use on the TV"'}>Sync now</button>
+            <button class="btn" data-act="mdbsync">Sync now</button>
           </div>` : ''}
       </div>`).join('');
   document.querySelectorAll('#profileSettings select').forEach(el => { el.value = String(s[el.dataset.key]); });

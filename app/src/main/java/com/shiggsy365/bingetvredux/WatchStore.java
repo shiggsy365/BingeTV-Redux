@@ -119,6 +119,22 @@ public final class WatchStore {
         return sInstance;
     }
 
+    /**
+     * Any profile's store: the open one for the profile in use, else one opened for the
+     * purpose, which the caller {@link #close}s.
+     */
+    static synchronized WatchStore forProfile(Context context, String profileId) {
+        if (profileId.equals(Profiles.current(context).id)) return get(context);
+        return new WatchStore(context, profileId);
+    }
+
+    /** Closes a store from {@link #forProfile} (the one in use stays open). */
+    void close() {
+        synchronized (WatchStore.class) {
+            if (this != sInstance) mHelper.close();
+        }
+    }
+
     /** Forgets the open store, e.g. after switching profile. */
     static synchronized void reset() {
         if (sInstance != null) sInstance.mHelper.close();

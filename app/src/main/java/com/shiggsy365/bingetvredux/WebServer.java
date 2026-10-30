@@ -1046,6 +1046,11 @@ public class WebServer extends NanoHTTPD {
             putEntry(zip, "settings.json", settings.toString(2).getBytes(StandardCharsets.UTF_8));
             // Addon URLs hold their configuration (often keys), so they're always included:
             // without them the addons can't be restored.
+            // Each profile's own (addons/ID.json); addons.json, the one in use, is for older versions.
+            for (Profiles.Profile p : Profiles.all(mContext)) {
+                putEntry(zip, "addons/" + p.id + ".json", Stremio.addons(mContext, p.id).toJson()
+                        .toString(2).getBytes(StandardCharsets.UTF_8));
+            }
             putEntry(zip, "addons.json", Stremio.addons(mContext).toJson().toString(2)
                     .getBytes(StandardCharsets.UTF_8));
             JSONObject profiles = Profiles.export(mContext);
@@ -1113,6 +1118,7 @@ public class WebServer extends NanoHTTPD {
         JSONObject settings = null;
         JSONObject config = null;
         JSONObject addons = null;
+        Map<String, JSONObject> profileAddons = new HashMap<>();
         JSONObject profiles = null;
         Map<String, byte[]> logos = new HashMap<>();
         Map<String, byte[]> avatars = new HashMap<>();
@@ -1129,6 +1135,9 @@ public class WebServer extends NanoHTTPD {
                     settings = new JSONObject(new String(content, StandardCharsets.UTF_8));
                 } else if ("profiles.json".equals(name)) {
                     profiles = new JSONObject(new String(content, StandardCharsets.UTF_8));
+                } else if (name.matches("addons/[a-z0-9]+\\.json")) {
+                    profileAddons.put(name.substring("addons/".length(), name.length() - 5),
+                            new JSONObject(new String(content, StandardCharsets.UTF_8)));
                 } else if ("addons.json".equals(name)) {
                     addons = new JSONObject(new String(content, StandardCharsets.UTF_8));
                 } else if ("config.json".equals(name)) {
@@ -1173,10 +1182,10 @@ public class WebServer extends NanoHTTPD {
             }
         }
         ChannelConfig.replace(mContext, config);
-        // FyrTuner's backups have no addons: the ones here stay.
-        if (addons != null) Stremio.addons(mContext).replace(addons);
+        // FyrTuner's backups have no addons: the ones here stay. (Applied once the profiles are.)
         if (profiles != null) {
             Profiles.restore(mContext, profiles);
+            Stremio.reloadAddons();
             // Profile pictures: the backup's replace any here.
             File[] old = new File(mContext.getFilesDir(), "avatars").listFiles();
             for (int i = 0; old != null && i < old.length; i++) //noinspection ResultOfMethodCallIgnored
@@ -1216,10 +1225,17 @@ public class WebServer extends NanoHTTPD {
 
         ChannelSyncWorker.syncNow(mContext);
         ChannelSyncWorker.schedule(mContext, ChannelSyncWorker.SYNC_INTERVAL_HOURS);
+        // Each profile's addons: from the backup's own, else (an older backup) its one set for all.
+        if (!profileAddons.isEmpty() || addons != null) {
+            for (Profiles.Profile p : Profiles.all(mContext)) {
+                JSONObject own = profileAddons.containsKey(p.id) ? profileAddons.get(p.id) : addons;
+                if (own != null) Stremio.addons(mContext, p.id).replace(own);
+            }
+        }
         return state().put("restored", new JSONObject()
                 .put("logos", logos.size())
                 .put("guides", guides.size())
-                .put("addons", addons == null ? -1 : Stremio.addons(mContext).all().size())
+                .put("addons", addons == null && profileAddons.isEmpty() ? -1 : Stremio.addons(mContext).all().size())
                 .put("passwordRestored", hasPassword));
     }
 

@@ -17,8 +17,8 @@ android {
         applicationId "com.shiggsy365.bingetvredux"
         minSdkVersion 23
         targetSdkVersion 34
-        versionCode 4
-        versionName "1.0.2"
+        versionCode 5
+        versionName "1.0.3"
         // Fire TV and Android TV devices are ARM; FFmpeg's libraries are large per ABI.
         ndk { abiFilters 'armeabi-v7a', 'arm64-v8a' }
     }

@@ -98,6 +98,15 @@ public final class Settings {
         return prefs(context).getString(key, (String) DEFAULTS.get(key));
     }
 
+    /** Another profile's setting (e.g. for syncing it while it isn't the one in use). */
+    public static String string(Context context, String profileId, String key) {
+        return prefs(context, profileId).getString(key, (String) DEFAULTS.get(key));
+    }
+
+    public static int integer(Context context, String profileId, String key) {
+        return prefs(context, profileId).getInt(key, (Integer) DEFAULTS.get(key));
+    }
+
     public static void putString(Context context, String key, String value) {
         prefs(context).edit().putString(key, value).apply();
     }

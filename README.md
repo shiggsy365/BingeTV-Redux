@@ -30,6 +30,8 @@ updates** (under the logo) checks straight away.
 
 ## Setting up (on the web page)
 
+- **Each profile has its own addons and catalogs** (picked at the top of the Addons and Catalogs
+  tabs); a new profile starts with a copy of the one in use on the TV.
 - **Addons:** paste each addon's manifest URL (or `stremio://` link). Addons are asked in the
   order listed, so put your best metadata addon (e.g. AIOMetadata) above Cinemeta. Configure,
   refresh, reorder, turn off or remove them here. Torrent-only streams aren't played: use a

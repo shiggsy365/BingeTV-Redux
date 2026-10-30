@@ -12,7 +12,7 @@ import java.util.List;
 
 /**
  * The people who use the app. Each profile has its own watch history, playback and subtitle
- * settings and MDBList account; addons, catalogs and live TV are shared. There's always at
+ * settings, MDBList account, addons and catalogs; live TV is shared. There's always at
  * least one profile; with more than one, the app asks who's watching when it starts.
  */
 public final class Profiles {
@@ -81,6 +81,8 @@ public final class Profiles {
         int n = 1;
         while (get(context, "p" + n) != null) n++;
         Profile profile = new Profile("p" + n, name);
+        // Its own addons and catalogs, starting as a copy of the profile in use.
+        Stremio.copyAddons(context, current(context).id, profile.id);
         list.add(profile);
         save(context, list);
         return profile;
@@ -106,6 +108,7 @@ public final class Profiles {
         context.deleteSharedPreferences(Settings.prefsName(id));
         //noinspection ResultOfMethodCallIgnored
         avatarFile(context, id).delete();
+        Stremio.deleteAddons(context, id);
         if (current(context).id.equals(id) || get(context, current(context).id) == null) {
             setCurrent(context, list.get(0).id);
         }

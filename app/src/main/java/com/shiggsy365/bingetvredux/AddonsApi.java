@@ -36,6 +36,8 @@ import java.util.concurrent.Future;
  *   POST /api/hubs/update                {id, name?, icon?} — "" gives a built-in hub its own
  *                                        name (or a hub its usual icon)
  *   POST /api/hubs/delete                {id}
+ *
+ * Each is for one profile's addons: {@code ?profile=ID}, else the profile in use on the TV.
  */
 final class AddonsApi {
     private final Context mContext;
@@ -46,6 +48,22 @@ final class AddonsApi {
 
     /** Handles {@code uri}, or returns null if it isn't one of these endpoints. */
     Object route(String uri, Map<String, String> params, JSONObject body) throws Exception {
+        String profile = params == null ? null : params.get("profile");
+        if (profile != null && Profiles.get(mContext, profile) == null) {
+            throw new IllegalArgumentException("No such profile");
+        }
+        // Requests run on several threads at once: each knows its own profile.
+        sProfile.set(profile);
+        try {
+            return routeFor(uri, params, body);
+        } finally {
+            sProfile.remove();
+        }
+    }
+
+    private static final ThreadLocal<String> sProfile = new ThreadLocal<>();
+
+    private Object routeFor(String uri, Map<String, String> params, JSONObject body) throws Exception {
         switch (uri) {
             case "/api/addons":
                 return body == null ? list() : add(body.optString("url"));
@@ -84,8 +102,10 @@ final class AddonsApi {
         }
     }
 
+    /** The addons of the profile asked for, or of the one in use. */
     private AddonStore store() {
-        return Stremio.addons(mContext);
+        String profile = sProfile.get();
+        return profile == null ? Stremio.addons(mContext) : Stremio.addons(mContext, profile);
     }
 
     private JSONObject list() throws JSONException {
