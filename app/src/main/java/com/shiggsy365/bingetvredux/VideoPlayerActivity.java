@@ -63,6 +63,8 @@ public class VideoPlayerActivity extends Activity {
     private SubtitleDriver mSubtitles;
     // Whether this stream's subtitles have been chosen yet (once its tracks are known).
     private boolean mSubtitlesChosen;
+    // Nothing suited when the tracks came, and the addons' subtitles hadn't yet.
+    private boolean mWaitingForSubtitles;
     private View mUpNext;
     private TextView mUpNextCountdown;
     private ExoPlayer mPlayer;
@@ -119,6 +121,14 @@ public class VideoPlayerActivity extends Activity {
         if (mPlayerView.getSubtitleView() != null) mPlayerView.getSubtitleView().setVisibility(View.GONE);
         mSubtitles = new SubtitleDriver(findViewById(R.id.subtitles));
         mOsd.setSubtitles(mSubtitles, mPlayback.subtitles);
+        // The subtitle addons may answer after the video starts.
+        if (!mPlayback.subtitlesKnown()) {
+            mPlayback.setOnSubtitles(() -> {
+                if (isDestroyed()) return;
+                mOsd.setSubtitles(mSubtitles, mPlayback.subtitles);
+                if (mWaitingForSubtitles && mPlayer != null) chooseSubtitles(mPlayer.getCurrentTracks());
+            });
+        }
         mOsd.setInfo(mPlayback.title(), mPlayback.meta.logo, osdLine(),
                 String.join("  ·  ", mPlayback.meta.genres.subList(0, Math.min(3, mPlayback.meta.genres.size()))),
                 mPlayback.video != null && !mPlayback.video.overview.isEmpty()
@@ -167,6 +177,7 @@ public class VideoPlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (mPlayback != null) mPlayback.setOnSubtitles(null);
         if (mOsd != null) mOsd.release();
         if (mSubtitles != null) mSubtitles.release();
         mHandler.removeCallbacksAndMessages(null);
@@ -209,7 +220,9 @@ public class VideoPlayerActivity extends Activity {
         Log.i(TAG, "Stream " + (index + 1) + " of " + mPlayback.streams.size() + ": "
                 + String.join(" ", Streams.tags(stream)));
         mPlayer = Players.build(this, stream.headers);
-        mFrameRate = FrameRateMatcher.attach(this, mPlayer);
+        // Plays once the TV is in the video's mode, rather than switching a second into it.
+        mFrameRate = FrameRateMatcher.attachBeforePlay(this, mPlayer,
+                findViewById(R.id.frame_rate_cover));
         mPlayer.setTrackSelectionParameters(trackPrefs(mPlayer.getTrackSelectionParameters()));
         mSubtitles.attach(mPlayer);
         mSubtitlesChosen = false;
@@ -257,7 +270,8 @@ public class VideoPlayerActivity extends Activity {
         MediaItem item = new MediaItem.Builder().setUri(Uri.parse(stream.url)).build();
         mPlayer.setMediaItem(item, position);
         mPlayerView.setPlayer(mPlayer);
-        mPlayer.setPlayWhenReady(true);
+        // FrameRateMatcher starts it.
+        mPlayer.setPlayWhenReady(false);
         mPlayer.prepare();
         mHandler.removeCallbacks(mStartTimeout);
         mHandler.postDelayed(mStartTimeout, START_TIMEOUT_MS);
@@ -282,6 +296,7 @@ public class VideoPlayerActivity extends Activity {
      * else the first addon track in one, in the profile's order.
      */
     private void chooseSubtitles(Tracks tracks) {
+        mWaitingForSubtitles = false;
         if (!Settings.bool(this, Settings.SUBTITLES_ON)) return;
         List<String> languages = Settings.subtitleLanguages(this);
         for (Tracks.Group g : tracks.getGroups()) {
@@ -298,6 +313,7 @@ public class VideoPlayerActivity extends Activity {
                 }
             }
         }
+        mWaitingForSubtitles = !mPlayback.subtitlesKnown();
     }
 
     /** Whether a track's language (any ISO 639 form) is one of {@code languages} (ISO 639-2). */
@@ -372,13 +388,14 @@ public class VideoPlayerActivity extends Activity {
         // When depends on the episode's length (the profile's settings).
         if (left <= Settings.upNextBeforeEndMs(this, duration)) {
             if (mUpNext.getVisibility() != View.VISIBLE) showUpNext();
-            mUpNextCountdown.setText("Starting in " + Math.max(0, left / 1000)
-                    + " s   ·   OK to play now   ·   Back to keep watching");
+            mUpNextCountdown.setText("Up next  ·  in " + Math.max(0, left / 1000) + " s");
         }
     }
 
     private void showUpNext() {
         mUpNext.setVisibility(View.VISIBLE);
+        // Its streams and subtitles, found while the countdown runs.
+        StreamPrefetch.start(this, mPlayback.meta.type, mNext.id);
         ((TextView) findViewById(R.id.up_next_title)).setText(
                 DetailsActivity.episodeCode(mNext) + (mNext.title.isEmpty() ? "" : "  " + mNext.title));
         Images.load(findViewById(R.id.up_next_image), mNext.thumbnail.isEmpty()

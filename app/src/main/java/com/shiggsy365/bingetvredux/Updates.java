@@ -12,20 +12,15 @@ import android.widget.Toast;
 
 import androidx.core.content.FileProvider;
 
+import com.shiggsy365.bingetvredux.stremio.Http;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * New versions from GitHub Releases: about once a week Home asks for the latest release, and if
@@ -38,7 +33,7 @@ public final class Updates {
             "https://api.github.com/repos/shiggsy365/BingeTV-Redux/releases/latest";
     private static final long CHECK_EVERY_MS = 7 * 24 * 3600_000L;
     private static final int TIMEOUT_MS = 15_000;
-    private static final ExecutorService sExecutor = Executors.newSingleThreadExecutor();
+    private static final Background.Tasks sExecutor = new Background.Tasks(1);
 
     private Updates() {}
 
@@ -101,15 +96,35 @@ public final class Updates {
         JSONObject data = new JSONObject(get(LATEST));
         String version = data.optString("tag_name").replaceFirst("^v", "");
         if (compare(version, BuildConfig.VERSION_NAME) <= 0) return null;
-        JSONArray assets = data.optJSONArray("assets");
-        for (int i = 0; assets != null && i < assets.length(); i++) {
-            JSONObject asset = assets.getJSONObject(i);
-            if (asset.optString("name").endsWith(".apk")) {
-                return new Release(version, data.optString("body"),
-                        asset.getString("browser_download_url"));
+        String apk = apkFor(data.optJSONArray("assets"), Build.SUPPORTED_ABIS);
+        return apk == null ? null : new Release(version, data.optString("body"), apk);
+    }
+
+    /**
+     * The download for this device: the APK for its ABI (best first), else the one for all
+     * ("BingeTV-Redux-1.0.5.apk" beside "…-armeabi-v7a.apk"), else any APK.
+     */
+    static String apkFor(JSONArray assets, String[] abis) throws org.json.JSONException {
+        if (assets == null) return null;
+        String universal = null, any = null;
+        for (String abi : abis) {
+            for (int i = 0; i < assets.length(); i++) {
+                JSONObject asset = assets.getJSONObject(i);
+                if (asset.optString("name").endsWith("-" + abi + ".apk")) {
+                    return asset.getString("browser_download_url");
+                }
             }
         }
-        return null;
+        for (int i = 0; i < assets.length(); i++) {
+            JSONObject asset = assets.getJSONObject(i);
+            String name = asset.optString("name");
+            if (!name.endsWith(".apk")) continue;
+            if (any == null) any = asset.getString("browser_download_url");
+            if (universal == null && !name.matches(".*-(armeabi|arm64|x86).*")) {
+                universal = asset.getString("browser_download_url");
+            }
+        }
+        return universal != null ? universal : any;
     }
 
     /** Compares dotted versions: "1.10.0" is newer than "1.9.2". */
@@ -149,15 +164,12 @@ public final class Updates {
             dir.mkdirs();
             File apk = new File(dir, "BingeTV-Redux.apk");
             try {
-                HttpURLConnection conn = (HttpURLConnection) new URL(release.apkUrl).openConnection();
-                conn.setConnectTimeout(TIMEOUT_MS);
-                conn.setReadTimeout(60_000);
-                try (InputStream in = conn.getInputStream(); OutputStream out = new FileOutputStream(apk)) {
+                try (Http.Body body = Http.get(release.apkUrl).timeouts(TIMEOUT_MS, 60_000).open();
+                     OutputStream out = new FileOutputStream(apk)) {
+                    if (!body.ok()) throw new IOException("GitHub answered HTTP " + body.status);
                     byte[] buffer = new byte[64 * 1024];
                     int n;
-                    while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
-                } finally {
-                    conn.disconnect();
+                    while ((n = body.in.read(buffer)) != -1) out.write(buffer, 0, n);
                 }
                 activity.runOnUiThread(() -> install(activity, apk));
             } catch (IOException e) {
@@ -186,24 +198,11 @@ public final class Updates {
     }
 
     private static String get(String url) throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-        try {
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
-            conn.setRequestProperty("Accept", "application/vnd.github+json");
-            conn.setRequestProperty("User-Agent", "BingeTVRedux/" + BuildConfig.VERSION_NAME);
-            int status = conn.getResponseCode();
-            if (status == 404) return "{}";  // no releases yet
-            if (status != 200) throw new IOException("GitHub answered HTTP " + status);
-            try (InputStream in = conn.getInputStream()) {
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                byte[] buffer = new byte[16 * 1024];
-                int n;
-                while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
-                return new String(out.toByteArray(), StandardCharsets.UTF_8);
-            }
-        } finally {
-            conn.disconnect();
-        }
+        Http.Response r = Http.get(url).timeout(TIMEOUT_MS)
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", "BingeTVRedux/" + BuildConfig.VERSION_NAME).send();
+        if (r.status == 404) return "{}";  // no releases yet
+        if (r.status != 200) throw new IOException("GitHub answered HTTP " + r.status);
+        return r.text();
     }
 }

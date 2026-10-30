@@ -120,16 +120,22 @@ public final class Profiles {
         for (Profile p : all(context)) {
             list.put(new JSONObject().put("id", p.id).put("name", p.name)
                     .put("settings", Settings.toJson(context, p.id))
+                    .put("recentChannels", Settings.recentChannelsText(context, p.id))
                     .put("watch", WatchStore.export(context, p.id)));
         }
         return new JSONObject().put("profiles", list).put("current", current(context).id);
     }
 
-    /** From a backup: replaces every profile. */
+    /**
+     * From a backup: replaces every profile. A backup made without passwords has no MDBList
+     * keys; a profile here already keeps its own, as the TV's password is kept.
+     */
     static synchronized void restore(Context context, JSONObject data) throws JSONException {
         JSONArray list = data.getJSONArray("profiles");
         List<Profile> profiles = new ArrayList<>();
+        java.util.Map<String, String> keys = new java.util.HashMap<>();
         for (Profile old : all(context)) {
+            keys.put(old.id, Settings.string(context, old.id, Settings.MDBLIST_KEY));
             WatchStore.delete(context, old.id);
             context.deleteSharedPreferences(Settings.prefsName(old.id));
         }
@@ -139,8 +145,19 @@ public final class Profiles {
             profiles.add(new Profile(id, p.getString("name")));
             JSONObject settings = p.optJSONObject("settings");
             if (settings != null) Settings.apply(context, id, settings);
+            String key = keys.get(id);
+            if ((settings == null || !settings.has(Settings.MDBLIST_KEY)) && key != null && !key.isEmpty()) {
+                Settings.putMdblistKey(context, id, key);
+            }
+            Settings.setRecentChannelsText(context, id, p.optString("recentChannels"));
             JSONArray watch = p.optJSONArray("watch");
             if (watch != null) WatchStore.restore(context, id, watch);
+        }
+        // Profiles here that the backup doesn't have go, with their addons.
+        for (String id : keys.keySet()) {
+            boolean kept = false;
+            for (Profile p : profiles) kept |= p.id.equals(id);
+            if (!kept) Stremio.deleteAddons(context, id);
         }
         save(context, profiles);
         setCurrent(context, data.optString("current", profiles.get(0).id));

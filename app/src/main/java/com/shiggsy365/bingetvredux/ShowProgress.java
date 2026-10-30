@@ -18,8 +18,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * Whether a show you've started has every aired episode watched, for its poster's ribbon. That
@@ -42,7 +40,7 @@ final class ShowProgress {
     private static final Map<String, Aired> sAired = new HashMap<>();
     private static final Set<String> sPending = new HashSet<>();
     private static final List<Runnable> sListeners = new ArrayList<>();
-    private static final ExecutorService sExecutor = Executors.newFixedThreadPool(2);
+    private static final Background.Tasks sExecutor = new Background.Tasks(2);
     private static final Handler sMain = new Handler(Looper.getMainLooper());
 
     private ShowProgress() {}

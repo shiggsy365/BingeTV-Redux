@@ -196,6 +196,58 @@ public final class GuideData {
         return groups;
     }
 
+    /**
+     * Home's On Now row: up to {@code limit} channels with what's on now and next, the given
+     * channels first and then in number order. Lighter than {@link #load}: no stream lists,
+     * groups or full schedules. Off the main thread.
+     */
+    public static List<Channel> onNow(Context context, List<Long> first, int limit) {
+        SQLiteDatabase db = GuideStore.get(context).getReadableDatabase();
+        List<Channel> channels = new ArrayList<>();
+        try (Cursor c = db.query(GuideStore.CHANNELS,
+                new String[]{"stream_id", "number", "name", "group_id"},
+                null, null, null, null, "number")) {
+            while (c.moveToNext()) {
+                int streamId = c.getInt(0);
+                channels.add(new Channel(streamId, streamId, String.valueOf(c.getInt(1)),
+                        c.getString(2), c.getString(3)));
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Could not read channels", e);
+        }
+        List<Channel> ordered = new ArrayList<>();
+        for (long id : first) {
+            for (Channel channel : channels) {
+                if (channel.id == id) ordered.add(channel);
+            }
+        }
+        for (Channel channel : channels) {
+            if (!ordered.contains(channel)) ordered.add(channel);
+        }
+        long now = System.currentTimeMillis();
+        List<Channel> out = new ArrayList<>();
+        for (Channel channel : ordered) {
+            try (Cursor c = db.query(GuideStore.PROGRAMS,
+                    new String[]{"title", "description", "image", "start_ms", "end_ms"},
+                    "stream_id = ? AND end_ms > ?",
+                    new String[]{String.valueOf(channel.streamId), String.valueOf(now)},
+                    null, null, "start_ms", "2")) {
+                while (c.moveToNext()) {
+                    Program p = new Program(c.getString(0), c.getString(1), c.getString(2),
+                            c.getLong(3), c.getLong(4));
+                    if (channel.now == null && p.startMs <= now) channel.now = p;
+                    else if (channel.now != null) channel.next = p;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Could not read programs for channel " + channel.id, e);
+            }
+            if (channel.now == null) continue;
+            out.add(channel);
+            if (out.size() >= limit) break;
+        }
+        return out;
+    }
+
     /** Refreshes now/next for the given channels, e.g. when a program ends. */
     public static void refreshPrograms(Context context, List<Channel> channels) {
         SQLiteDatabase db = GuideStore.get(context).getReadableDatabase();

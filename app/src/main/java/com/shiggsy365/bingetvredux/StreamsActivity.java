@@ -21,20 +21,16 @@ import com.shiggsy365.bingetvredux.stremio.MetaItem;
 import com.shiggsy365.bingetvredux.stremio.Stream;
 import com.shiggsy365.bingetvredux.stremio.StreamInfo;
 import com.shiggsy365.bingetvredux.stremio.Streams;
-import com.shiggsy365.bingetvredux.stremio.Subtitles;
 import com.shiggsy365.bingetvredux.stremio.Video;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 
 /**
- * Finds the streams for the film or episode in Playback, from every stream addon, with
- * subtitles alongside. Played straight away, the best stream starts (a next episode prefers
- * the source the last one came from), and the next ones are tried if it fails; chosen, they're
- * listed with their quality tags.
+ * Finds the streams for the film or episode in Playback, from every stream addon; subtitles
+ * are found alongside and handed to the player when they come. Played straight away, the best
+ * stream starts (a next episode prefers the source the last one came from), and the next ones
+ * are tried if it fails; chosen, they're listed with their quality tags as addons answer.
  */
 public class StreamsActivity extends Activity {
     static final String EXTRA_CHOOSE = "choose";
@@ -50,8 +46,16 @@ public class StreamsActivity extends Activity {
     private final List<List<Integer>> mFilterMembers = new ArrayList<>();
     private int mFilter;
     private StreamCards.Adapter mCards;
-    private final ExecutorService mExecutor = Executors.newFixedThreadPool(2);
+    // What the list shows; the cards read these, so they're changed in place.
+    private final List<Stream> mStreams = new ArrayList<>();
+    private final List<StreamInfo> mInfos = new ArrayList<>();
+    private final Background.Tasks mExecutor = new Background.Tasks(1);
     private Playback mPlayback;
+    private boolean mChoose;
+    // Every addon has answered (later news from a slow one is dropped).
+    private boolean mDone;
+    // The streams found, before the profile's filters, for "Show them anyway".
+    private Streams.Found mFound;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -79,6 +83,8 @@ public class StreamsActivity extends Activity {
         }
         Images.fade(findViewById(R.id.backdrop), meta.background.isEmpty() ? meta.poster : meta.background);
         mStatus.setText("Searching for streams…");
+        mChoose = getIntent().getBooleanExtra(EXTRA_CHOOSE, false);
+        findViewById(R.id.show_hidden).setOnClickListener(v -> showHidden());
         find();
     }
 
@@ -92,24 +98,37 @@ public class StreamsActivity extends Activity {
         String type = mPlayback.meta.type;
         String id = mPlayback.videoId();
         Context app = getApplicationContext();
-        List<String> languages = Settings.subtitleLanguages(app);
         boolean episode = mPlayback.video != null && mPlayback.video.season != Video.NONE;
         Streams.Prefs prefs = Settings.streamPrefs(app, episode);
-        Future<List<Subtitles.Track>> subtitles = mExecutor.submit(() -> Subtitles.fetch(
-                Stremio.client(app), Stremio.addons(app), type, id, null, languages));
+        // Up Next may have found them already.
+        StreamPrefetch.Found pre = StreamPrefetch.take(type, id);
+        if (pre != null) mPlayback.subtitlesFrom(pre.subtitles);
+        else mPlayback.findSubtitles(app);
         mExecutor.execute(() -> {
-            Streams.Found found = Streams.fetch(Stremio.client(app), Stremio.addons(app), type, id);
-            List<Stream> streams = sameSourceFirst(Streams.prepare(found.streams, prefs),
-                    mPlayback.bingeGroup);
-            List<Subtitles.Track> subs;
-            try {
-                subs = subtitles.get();
-            } catch (Exception e) {
-                subs = new ArrayList<>();
+            Streams.Found found = null;
+            if (pre != null) {
+                try {
+                    found = pre.streams.get();
+                } catch (Exception e) {
+                    // Ask again, then.
+                }
             }
-            List<Subtitles.Track> finalSubs = subs;
-            runOnUiThread(() -> show(streams, finalSubs, found));
+            if (found == null) {
+                // Chosen: the list fills in as addons answer, rather than waiting for the slowest.
+                Streams.Progress progress = !mChoose ? null : (soFar, answered, asked) -> {
+                    List<Stream> streams = arrange(soFar, prefs);
+                    runOnUiThread(() -> showSoFar(streams, answered, asked));
+                };
+                found = Streams.fetch(Stremio.client(app), Stremio.addons(app), type, id, progress);
+            }
+            Streams.Found all = found;
+            List<Stream> streams = arrange(all, prefs);
+            runOnUiThread(() -> show(streams, all));
         });
+    }
+
+    private List<Stream> arrange(Streams.Found found, Streams.Prefs prefs) {
+        return sameSourceFirst(Streams.prepare(found.streams, prefs), mPlayback.bingeGroup);
     }
 
     /** Streams from the given source group first (for the next episode of a show). */
@@ -121,38 +140,97 @@ public class StreamsActivity extends Activity {
         return out;
     }
 
-    private void show(List<Stream> streams, List<Subtitles.Track> subtitles, Streams.Found found) {
-        if (isDestroyed()) return;
+    /** Some addons have answered: the list so far, while the rest are asked. */
+    private void showSoFar(List<Stream> streams, int answered, int asked) {
+        if (isDestroyed() || mDone) return;
+        if (streams.isEmpty()) {
+            mStatus.setText("Searching for streams… (" + answered + " of " + asked + " sources)");
+            return;
+        }
+        showList(streams, asked - answered);
+    }
+
+    private void show(List<Stream> streams, Streams.Found found) {
+        if (isDestroyed() || mDone) return;
+        mDone = true;
+        mFound = found;
         mPlayback.streams = streams;
-        mPlayback.subtitles = subtitles;
         mProgress.setVisibility(View.GONE);
         if (streams.isEmpty()) {
+            boolean hidden = !found.streams.isEmpty() && !Streams.prepare(found.streams,
+                    new Streams.Prefs()).isEmpty();
+            // The list may be showing what one addon offered; there's nothing in the end.
+            findViewById(R.id.searching).setVisibility(View.VISIBLE);
+            findViewById(R.id.page).setVisibility(View.GONE);
             mStatus.setText(found.streams.isEmpty()
                     ? "No streams found" + (found.errors.isEmpty() ? ""
                     : " (" + String.join("; ", found.errors) + ")")
-                    : "No streams left after your filters (" + found.streams.size() + " hidden)");
+                    : hidden ? "No streams left after your filters (" + found.streams.size() + " hidden)"
+                    : "No playable streams (torrents need a torrent client)");
+            View showHidden = findViewById(R.id.show_hidden);
+            showHidden.setVisibility(hidden ? View.VISIBLE : View.GONE);
+            if (hidden) showHidden.requestFocus();
             return;
         }
-        if (!getIntent().getBooleanExtra(EXTRA_CHOOSE, false)) {
+        if (!mChoose) {
             play(0);
             finish();
             return;
         }
-        showList(streams);
+        showList(streams, 0);
     }
 
-    /** The cards in two columns, under tabs that filter them. */
-    private void showList(List<Stream> streams) {
+    /** "Show them anyway": the streams the profile's filters hid, sorted as usual. */
+    private void showHidden() {
+        Streams.Prefs none = new Streams.Prefs();
+        none.sort = Settings.integer(this, Settings.SORT);
+        none.hideCam = false;
+        List<Stream> streams = arrange(mFound, none);
+        mPlayback.streams = streams;
+        findViewById(R.id.show_hidden).setVisibility(View.GONE);
+        if (streams.isEmpty()) return;
+        showList(streams, 0);
+    }
+
+    /**
+     * The cards in two columns, under tabs that filter them. Called again as more addons answer
+     * ({@code waiting} still to come): the focused stream stays focused, on the same tab.
+     */
+    private void showList(List<Stream> streams, int waiting) {
         findViewById(R.id.searching).setVisibility(View.GONE);
         findViewById(R.id.page).setVisibility(View.VISIBLE);
         ((View) findViewById(R.id.shade)).setBackgroundColor(0xCC0E0F14);
-        String count = streams.size() + (streams.size() == 1 ? " stream" : " streams");
+        String count = streams.size() + (streams.size() == 1 ? " stream" : " streams")
+                + (waiting > 0 ? "  ·  still asking " + waiting + (waiting == 1 ? " source" : " sources") : "");
         String subtitle = mPlayback.subtitle();
         ((TextView) findViewById(R.id.subtitle)).setText(subtitle == null ? count : subtitle + "  ·  " + count);
-        List<StreamInfo> infos = new ArrayList<>();
-        for (Stream s : streams) infos.add(StreamInfo.of(s));
-        buildFilters(streams, infos);
-        mCards = new StreamCards.Adapter(streams, infos, -1, this::play,
+        // What has the focus now, to find again in the new list.
+        String focusedKey = null, filterLabel = null;
+        if (mCards != null) {
+            filterLabel = mFilterLabels.get(mFilter);
+            int at = mList.getSelectedPosition();
+            List<Integer> members = mFilterMembers.get(mFilter);
+            if (at >= 0 && at < members.size()) focusedKey = mStreams.get(members.get(at)).dedupeKey();
+        }
+        mStreams.clear();
+        mStreams.addAll(streams);
+        mInfos.clear();
+        for (Stream s : streams) mInfos.add(StreamInfo.of(s));
+        buildFilters(mStreams, mInfos);
+        if (mCards != null) {
+            int filter = Math.max(0, mFilterLabels.indexOf(filterLabel));
+            mFilters.getAdapter().notifyDataSetChanged();
+            showFilter(filter);
+            List<Integer> members = mFilterMembers.get(filter);
+            for (int i = 0; focusedKey != null && i < members.size(); i++) {
+                if (mStreams.get(members.get(i)).dedupeKey().equals(focusedKey)) {
+                    mList.setSelectedPosition(i);
+                    break;
+                }
+            }
+            return;
+        }
+        mCards = new StreamCards.Adapter(mStreams, mInfos, -1, this::play,
                 info -> mFilename.setText(info.filename.isEmpty() ? info.details.replace('\n', ' ') : info.filename));
         mList.setNumColumns(2);
         mList.setHorizontalSpacing(Math.round(8 * getResources().getDisplayMetrics().density));
@@ -241,6 +319,8 @@ public class StreamsActivity extends Activity {
     }
 
     private void play(int index) {
+        // What's listed now: more addons answering later don't change what's playing.
+        mPlayback.streams = new ArrayList<>(mStreams.isEmpty() ? mPlayback.streams : mStreams);
         mPlayback.start = index;
         startActivity(new Intent(this, VideoPlayerActivity.class));
     }

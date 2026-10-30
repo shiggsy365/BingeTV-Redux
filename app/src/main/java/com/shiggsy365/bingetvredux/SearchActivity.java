@@ -9,6 +9,7 @@ import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.KeyEvent;
+import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
@@ -21,8 +22,6 @@ import com.shiggsy365.bingetvredux.stremio.MetaItem;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * One search across every search catalog (chosen and ordered on the web page), a row of
@@ -33,12 +32,13 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
     private static final String EXTRA_PERSON = "person";
     private static final long TYPING_PAUSE_MS = 700;
     private static final int MIN_LENGTH = 2;
+    private static final int REQUEST_VOICE = 1;
 
     private EditText mQuery;
     private TextView mStatus;
     private CatalogRows mRows;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
+    private final Background.Tasks mExecutor = new Background.Tasks(1);
     private String mSearched = "";
     private int mGeneration;
     private final Runnable mSearch = this::search;
@@ -87,6 +87,10 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
             }
             return false;
         });
+        // Only where apps can have speech: on Fire TV the mic belongs to Alexa.
+        View voice = findViewById(R.id.voice);
+        voice.setVisibility(canSpeak() ? View.VISIBLE : View.GONE);
+        voice.setOnClickListener(v -> voice());
         String person = getIntent().getStringExtra(EXTRA_PERSON);
         if (person != null && !person.isEmpty()) {
             mPerson = true;
@@ -97,6 +101,40 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
         } else {
             mQuery.requestFocus();
         }
+    }
+
+    private Intent speechIntent() {
+        return new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                        android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Search films, shows and people");
+    }
+
+    /** Whether the device has a speech recogniser for apps (Android TV, Google TV; not Fire TV). */
+    private boolean canSpeak() {
+        return speechIntent().resolveActivity(getPackageManager()) != null;
+    }
+
+    /** Speak the search, with the device's recogniser. */
+    private void voice() {
+        try {
+            startActivityForResult(speechIntent(), REQUEST_VOICE);
+        } catch (android.content.ActivityNotFoundException e) {
+            findViewById(R.id.voice).setVisibility(View.GONE);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_VOICE || resultCode != RESULT_OK || data == null) return;
+        java.util.ArrayList<String> heard =
+                data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);
+        if (heard == null || heard.isEmpty()) return;
+        mQuery.setText(heard.get(0));
+        mHandler.removeCallbacks(mSearch);
+        search();
+        findViewById(R.id.rows).requestFocus();
     }
 
     @Override

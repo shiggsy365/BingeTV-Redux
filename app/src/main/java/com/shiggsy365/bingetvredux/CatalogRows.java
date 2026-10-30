@@ -23,8 +23,6 @@ import com.shiggsy365.bingetvredux.stremio.StremioException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * Rows of posters in a VerticalGridView, as on Home, the hubs and Search. A catalog row loads
@@ -76,6 +74,8 @@ public final class CatalogRows {
     }
 
     private static final int PAGE_AHEAD = 8;
+    // Blank cards in a row that's still loading: enough to cross the screen.
+    private static final int PLACEHOLDERS = 8;
     // A catalog row shows this many at most; "See all" opens the rest.
     private static final int ROW_MAX = 50;
 
@@ -83,12 +83,16 @@ public final class CatalogRows {
     private final VerticalGridView mGrid;
     private final Listener mListener;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private final ExecutorService mExecutor = Executors.newFixedThreadPool(4);
+    private final Background.Tasks mExecutor = new Background.Tasks(4);
     private final List<Row> mAll = new ArrayList<>();
     // The rows shown: all of them but the empty ones.
     private final List<Row> mShown = new ArrayList<>();
     private final RowsAdapter mAdapter = new RowsAdapter();
     private Runnable mOnChanged;
+    // The focused poster's item and row, so a row reloaded under it can update the hero.
+    private MetaItem mFocused;
+    private Row mFocusedRow;
+    private final java.util.Random mRandom = new java.util.Random();
     // A started show's episodes became known: its poster may now get the watched ribbon.
     private final Runnable mRedrawBadges = () -> {
         mHandler.removeCallbacks(this.mRedrawRows);
@@ -126,9 +130,21 @@ public final class CatalogRows {
     /** A random item of the first row that has any; null if none has loaded yet. */
     public MetaItem randomFirstItem() {
         for (Row r : mShown) {
-            if (!r.items.isEmpty()) return r.items.get(new java.util.Random().nextInt(r.items.size()));
+            if (!r.items.isEmpty()) return r.items.get(mRandom.nextInt(r.items.size()));
         }
         return null;
+    }
+
+    /**
+     * Loads the named rows' items again (rows worked out by code, such as Continue Watching),
+     * keeping the rest of the page and the focus as they are. Each keeps showing what it had
+     * until its new items come.
+     */
+    public void reload(java.util.Collection<String> titles) {
+        for (Row r : mAll) {
+            if (r.loader == null || r.loading || !r.loaded || !titles.contains(r.title)) continue;
+            runLoader(r);
+        }
     }
 
     public int shownCount() {
@@ -159,17 +175,7 @@ public final class CatalogRows {
     private void load(Row row) {
         if (row.loader != null) {
             if (row.loading || row.loaded) return;
-            row.loading = true;
-            mExecutor.execute(() -> {
-                List<MetaItem> items;
-                try {
-                    items = row.loader.call();
-                } catch (Exception e) {
-                    items = new ArrayList<>();
-                }
-                List<MetaItem> result = items;
-                mHandler.post(() -> showItems(row, result));
-            });
+            runLoader(row);
             return;
         }
         if (row.entry == null || row.loading
@@ -209,6 +215,20 @@ public final class CatalogRows {
                     }
                 });
             }
+        });
+    }
+
+    private void runLoader(Row row) {
+        row.loading = true;
+        mExecutor.execute(() -> {
+            List<MetaItem> items;
+            try {
+                items = row.loader.call();
+            } catch (Exception e) {
+                items = new ArrayList<>();
+            }
+            List<MetaItem> result = items;
+            mHandler.post(() -> showItems(row, result));
         });
     }
 
@@ -254,10 +274,27 @@ public final class CatalogRows {
         row.loading = false;
         row.loaded = true;
         row.nextSkip = -1;
+        boolean same = sameItems(row.items, items) && row.items.size() == items.size();
         row.items.clear();
         row.items.addAll(items);
-        if (items.isEmpty()) refreshShown();
-        else if (row.adapter != null) row.adapter.notifyDataSetChanged();
+        // A reloaded row may have emptied, or a hidden one gained items.
+        if (items.isEmpty() || !mShown.contains(row)) refreshShown();
+        else if (row.adapter != null) {
+            if (same) row.adapter.notifyItemRangeChanged(0, items.size());
+            else row.adapter.notifyDataSetChanged();
+        }
+        // The focused title's details, if it's still in the row, are now these.
+        if (mFocusedRow == row && mFocused != null) {
+            for (MetaItem m : items) {
+                if (!m.id.equals(mFocused.id)) continue;
+                boolean changed = !m.subtitle.equals(mFocused.subtitle)
+                        || !m.description.equals(mFocused.description)
+                        || !m.background.equals(mFocused.background);
+                mFocused = m;
+                if (changed) mListener.onItemFocused(m);
+                break;
+            }
+        }
     }
 
     private static boolean sameItems(List<MetaItem> a, List<MetaItem> b) {
@@ -311,7 +348,7 @@ public final class CatalogRows {
     }
 
     private final class PosterAdapter extends RecyclerView.Adapter<PosterHolder> {
-        private static final int TYPE_POSTER = 0, TYPE_SEE_ALL = 1;
+        private static final int TYPE_POSTER = 0, TYPE_SEE_ALL = 1, TYPE_PLACEHOLDER = 2;
         private final Row mRow;
 
         PosterAdapter(Row row) {
@@ -323,8 +360,14 @@ public final class CatalogRows {
             return mRow.entry != null && !mRow.items.isEmpty();
         }
 
+        /** Still loading with nothing yet: blank cards hold the row's place. */
+        private boolean placeholders() {
+            return mRow.items.isEmpty() && !mRow.loaded && !mRow.failed;
+        }
+
         @Override
         public int getItemViewType(int position) {
+            if (placeholders()) return TYPE_PLACEHOLDER;
             return position < mRow.items.size() ? TYPE_POSTER : TYPE_SEE_ALL;
         }
 
@@ -337,6 +380,22 @@ public final class CatalogRows {
 
         @Override
         public void onBindViewHolder(@NonNull PosterHolder holder, int position) {
+            if (getItemViewType(position) == TYPE_PLACEHOLDER) {
+                ViewGroup.LayoutParams lp = holder.itemView.getLayoutParams();
+                lp.width = holder.itemView.getResources().getDimensionPixelSize(R.dimen.poster_width);
+                lp.height = holder.itemView.getResources().getDimensionPixelSize(R.dimen.poster_height);
+                holder.itemView.setLayoutParams(lp);
+                holder.name.setText(null);
+                Images.load(holder.image, null);
+                Badges.clear(holder.itemView);
+                holder.itemView.setFocusable(false);
+                holder.itemView.setAlpha(0.5f);
+                holder.itemView.setOnClickListener(null);
+                holder.itemView.setOnFocusChangeListener(null);
+                return;
+            }
+            holder.itemView.setFocusable(true);
+            holder.itemView.setAlpha(1f);
             if (getItemViewType(position) == TYPE_SEE_ALL) {
                 ViewGroup.LayoutParams lp = holder.itemView.getLayoutParams();
                 lp.width = holder.itemView.getResources().getDimensionPixelSize(R.dimen.poster_width);
@@ -348,8 +407,7 @@ public final class CatalogRows {
                 holder.itemView.setOnClickListener(v -> mActivity.startActivity(
                         CatalogActivity.intent(mActivity, mRow.entry, mRow.title)));
                 holder.itemView.setOnFocusChangeListener((v, focused) -> {
-                    float scale = focused ? 1.08f : 1f;
-                    v.animate().scaleX(scale).scaleY(scale).setDuration(120).start();
+                    CardFocus.apply(v, focused, CardFocus.POSTER);
                 });
                 return;
             }
@@ -374,10 +432,10 @@ public final class CatalogRows {
             Badges.bind(holder.itemView, item);
             holder.itemView.setOnClickListener(v -> mListener.onItemClicked(item));
             holder.itemView.setOnFocusChangeListener((v, focused) -> {
-                float scale = focused ? 1.08f : 1f;
-                v.animate().scaleX(scale).scaleY(scale).setDuration(120).start();
-                v.setElevation(focused ? 8f : 0f);
+                CardFocus.apply(v, focused, CardFocus.POSTER);
                 if (focused) {
+                    mFocused = item;
+                    mFocusedRow = mRow;
                     mListener.onItemFocused(item);
                     if (mRow.items.size() - position <= PAGE_AHEAD) load(mRow);
                 }
@@ -386,6 +444,7 @@ public final class CatalogRows {
 
         @Override
         public int getItemCount() {
+            if (placeholders()) return PLACEHOLDERS;
             return mRow.items.size() + (hasSeeAll() ? 1 : 0);
         }
     }

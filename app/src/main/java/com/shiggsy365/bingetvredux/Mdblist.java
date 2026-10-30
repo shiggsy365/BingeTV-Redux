@@ -8,18 +8,13 @@ import android.util.JsonToken;
 import android.util.Log;
 
 import com.shiggsy365.bingetvredux.stremio.MetaItem;
-import com.shiggsy365.bingetvredux.stremio.RequestLog;
+import com.shiggsy365.bingetvredux.stremio.Http;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -31,8 +26,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * MDBList (api.mdblist.com), with each profile's API key: scrobbling what's played, the
@@ -52,7 +45,7 @@ public final class Mdblist {
 
     private static final long ITEM_TTL_MS = 12 * 3600_000L;
 
-    private static final ExecutorService sExecutor = Executors.newSingleThreadExecutor();
+    private static final Background.Tasks sExecutor = new Background.Tasks(1);
     // Fetching the watchlist and syncing each have their own lock, so neither waits for the
     // other, and screens reading the cached watchlist never wait for either.
     private static final Object WATCHLIST_LOCK = new Object();
@@ -92,53 +85,27 @@ public final class Mdblist {
                 if (e.getValue() != null) url.appendQueryParameter(e.getKey(), e.getValue());
             }
         }
-        HttpURLConnection conn = null;
-        String address = url.build().toString();
-        long started = System.currentTimeMillis();
-        String result = "error";
-        long bytes = 0;
         try {
-            conn = (HttpURLConnection) new URL(address).openConnection();
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
-            conn.setRequestMethod(method);
-            conn.setRequestProperty("Accept", "application/json");
-            if (body != null) {
-                conn.setDoOutput(true);
-                conn.setRequestProperty("Content-Type", "application/json");
-                try (OutputStream out = conn.getOutputStream()) {
-                    out.write(body.toString().getBytes(StandardCharsets.UTF_8));
-                }
-            }
-            int status = conn.getResponseCode();
-            result = String.valueOf(status);
-            String type = conn.getContentType() == null ? "" : conn.getContentType();
-            if ((status == 401 || status == 403) && type.contains("json")) {
-                throw new MdblistException("MDBList rejected the API key");
-            }
-            if (status >= 400) throw new MdblistException("MDBList answered HTTP " + status);
-            String text = read(conn.getInputStream());
-            bytes = text.length();
+            Http.Call call = Http.request(method, url.build().toString()).timeout(TIMEOUT_MS)
+                    .header("Accept", "application/json");
+            if (body != null) call.json(body.toString());
+            Http.Response r = call.send();
+            checkStatus(r.status, r.contentType);
+            String text = r.text();
             if (text.isEmpty()) return new JSONObject();
             return text.trim().startsWith("[") ? new JSONArray(text) : new JSONObject(text);
         } catch (IOException e) {
             throw new MdblistException("Couldn't reach MDBList: " + e.getMessage());
         } catch (JSONException e) {
             throw new MdblistException("MDBList's answer isn't JSON");
-        } finally {
-            if (conn != null) conn.disconnect();
-            RequestLog.log(method, address, result, bytes, started);
         }
     }
 
-    private static String read(InputStream in) throws IOException {
-        try (InputStream input = in) {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            byte[] buffer = new byte[16 * 1024];
-            int n;
-            while ((n = input.read(buffer)) != -1) out.write(buffer, 0, n);
-            return new String(out.toByteArray(), StandardCharsets.UTF_8);
+    private static void checkStatus(int status, String type) throws MdblistException {
+        if ((status == 401 || status == 403) && type.contains("json")) {
+            throw new MdblistException("MDBList rejected the API key");
         }
+        if (status >= 400) throw new MdblistException("MDBList answered HTTP " + status);
     }
 
     private interface PageHandler {
@@ -558,31 +525,15 @@ public final class Mdblist {
             StreamHandler handler) throws MdblistException {
         Uri.Builder url = Uri.parse(BASE + path).buildUpon().appendQueryParameter("apikey", key);
         for (Map.Entry<String, String> e : params.entrySet()) url.appendQueryParameter(e.getKey(), e.getValue());
-        String address = url.build().toString();
-        long started = System.currentTimeMillis();
-        String result = "error";
-        HttpURLConnection conn = null;
-        try {
-            conn = (HttpURLConnection) new URL(address).openConnection();
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
-            conn.setRequestProperty("Accept", "application/json");
-            int status = conn.getResponseCode();
-            result = String.valueOf(status);
-            String type = conn.getContentType() == null ? "" : conn.getContentType();
-            if ((status == 401 || status == 403) && type.contains("json")) {
-                throw new MdblistException("MDBList rejected the API key");
-            }
-            if (status >= 400) throw new MdblistException("MDBList answered HTTP " + status);
+        try (Http.Body response = Http.get(url.build().toString()).timeout(TIMEOUT_MS)
+                .header("Accept", "application/json").open()) {
+            checkStatus(response.status, response.contentType);
             try (JsonReader reader = new JsonReader(new java.io.InputStreamReader(
-                    new java.io.BufferedInputStream(conn.getInputStream()), StandardCharsets.UTF_8))) {
+                    new java.io.BufferedInputStream(response.in), StandardCharsets.UTF_8))) {
                 handler.read(reader);
             }
         } catch (IOException | IllegalStateException e) {
             throw new MdblistException("Couldn't read MDBList's answer: " + e.getMessage());
-        } finally {
-            if (conn != null) conn.disconnect();
-            RequestLog.log("GET", address, result, -1, started);
         }
     }
 

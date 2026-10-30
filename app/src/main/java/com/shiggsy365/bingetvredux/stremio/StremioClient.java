@@ -3,19 +3,15 @@ package com.shiggsy365.bingetvredux.stremio;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.zip.GZIPInputStream;
 
 /** Talks to Stremio addons over HTTP. Safe to share between threads. */
 public class StremioClient {
-    public static final String USER_AGENT = "BingeTVRedux/1.0";
+    public static final String USER_AGENT = Http.USER_AGENT;
     private static final int DEFAULT_TIMEOUT_MS = 15_000;
     // Long-running shows' meta can be several MB; anything far bigger isn't an addon answer.
     private static final int MAX_BYTES = 32 * 1024 * 1024;
@@ -91,45 +87,15 @@ public class StremioClient {
     }
 
     public JSONObject getJson(String url) throws StremioException {
-        HttpURLConnection conn = null;
-        long started = System.currentTimeMillis();
-        String status = "error";
-        long bytes = 0;
         try {
-            conn = (HttpURLConnection) new URL(url).openConnection();
-            conn.setConnectTimeout(mTimeoutMs);
-            conn.setReadTimeout(mTimeoutMs);
-            conn.setRequestProperty("User-Agent", USER_AGENT);
-            conn.setRequestProperty("Accept", "application/json");
-            conn.setRequestProperty("Accept-Encoding", "gzip");
-            int code = conn.getResponseCode();
-            status = String.valueOf(code);
-            if (code != 200) throw new StremioException("The addon answered HTTP " + code);
-            InputStream in = conn.getInputStream();
-            if ("gzip".equalsIgnoreCase(conn.getContentEncoding())) in = new GZIPInputStream(in);
-            String text = read(in);
-            bytes = text.length();
-            return new JSONObject(text);
+            Http.Response r = Http.get(url).timeout(mTimeoutMs).header("Accept", "application/json")
+                    .maxBytes(MAX_BYTES).send();
+            if (r.status != 200) throw new StremioException("The addon answered HTTP " + r.status);
+            return new JSONObject(r.text());
         } catch (JSONException e) {
             throw new StremioException("The addon's answer isn't JSON");
         } catch (IOException e) {
             throw new StremioException("Couldn't reach the addon: " + describe(e), e);
-        } finally {
-            if (conn != null) conn.disconnect();
-            RequestLog.log("GET", url, status, bytes, started);
-        }
-    }
-
-    private static String read(InputStream in) throws IOException {
-        try (InputStream input = in) {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            byte[] buffer = new byte[32 * 1024];
-            int n;
-            while ((n = input.read(buffer)) != -1) {
-                out.write(buffer, 0, n);
-                if (out.size() > MAX_BYTES) throw new IOException("answer too large");
-            }
-            return new String(out.toByteArray(), StandardCharsets.UTF_8);
         }
     }
 

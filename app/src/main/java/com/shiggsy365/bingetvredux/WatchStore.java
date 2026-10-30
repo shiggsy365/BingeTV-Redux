@@ -100,6 +100,7 @@ public final class WatchStore {
     private int mVersion;
 
     private WatchStore(Context context, String profileId) {
+        long started = android.os.SystemClock.uptimeMillis();
         mHelper = new Helper(context.getApplicationContext(), dbName(profileId));
         SQLiteDatabase db = mHelper.getReadableDatabase();
         try (Cursor c = db.query("progress", null, null, null, null, null, null)) {
@@ -111,6 +112,14 @@ public final class WatchStore {
         try (Cursor c = db.query("dismissed", null, null, null, null, null, null)) {
             while (c.moveToNext()) mDismissed.put(c.getString(0), c.getLong(1));
         }
+        android.util.Log.i("WatchStore", mRows.size() + " rows for " + profileId + " in "
+                + (android.os.SystemClock.uptimeMillis() - started) + " ms"
+                + (android.os.Looper.myLooper() == android.os.Looper.getMainLooper() ? " (main thread)" : ""));
+    }
+
+    /** Whether the current profile's store is open (so get() won't read it all first). */
+    public static synchronized boolean isOpen() {
+        return sInstance != null;
     }
 
     /** The current profile's store. */
@@ -312,25 +321,31 @@ public final class WatchStore {
      * Stores playback progress. Returns WATCHED, RESUME or NONE (too short to count; an
      * earlier resume point is kept).
      */
-    public int record(Entry entry, long positionMs, long durationMs, int watchedPercent) {
+    /**
+     * What playing to {@code positionMs} counts as: WATCHED from {@code watchedPercent} of the
+     * way through, RESUME after the first MIN_RESUME_MS, else NONE.
+     */
+    static int outcome(long positionMs, long durationMs, int watchedPercent) {
         if (durationMs <= 0) return NONE;
-        int status;
+        if (positionMs >= durationMs * watchedPercent / 100) return WATCHED;
+        return positionMs >= MIN_RESUME_MS ? RESUME : NONE;
+    }
+
+    public int record(Entry entry, long positionMs, long durationMs, int watchedPercent) {
+        int status = outcome(positionMs, durationMs, watchedPercent);
+        if (status == NONE) return NONE;
         synchronized (this) {
             long now = System.currentTimeMillis();
             Row row = merged(entry);
-            if (positionMs >= durationMs * watchedPercent / 100) {
+            if (status == WATCHED) {
                 if (!row.watched) row.synced = false;
                 row.watched = true;
                 row.watchedAt = now;
                 row.positionMs = 0;
-                status = WATCHED;
-            } else if (positionMs >= MIN_RESUME_MS) {
+            } else {
                 row.positionMs = positionMs;
                 // Watching again: no longer counts as watched until it's finished.
                 row.watched = false;
-                status = RESUME;
-            } else {
-                return NONE;
             }
             row.durationMs = durationMs;
             row.updatedAt = now;
@@ -364,6 +379,40 @@ public final class WatchStore {
                     row.watchedAt = watched ? now : 0;
                     row.synced = false;
                     if (watched) row.updatedAt = now;
+                    write(row);
+                }
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
+        }
+        changed();
+    }
+
+    /** Each entry's state now (watched, position, when watched), for {@link #restoreWatched}. */
+    public synchronized List<long[]> watchedState(List<Entry> entries) {
+        List<long[]> out = new ArrayList<>();
+        for (Entry entry : entries) {
+            Row row = mRows.get(entry.videoId);
+            out.add(row == null ? new long[]{0, 0, 0}
+                    : new long[]{row.watched ? 1 : 0, row.positionMs, row.watchedAt});
+        }
+        return out;
+    }
+
+    /** Undoes {@link #setWatched}: puts back the states {@link #watchedState} gave. */
+    public void restoreWatched(List<Entry> entries, List<long[]> states) {
+        synchronized (this) {
+            SQLiteDatabase db = mHelper.getWritableDatabase();
+            db.beginTransaction();
+            try {
+                for (int i = 0; i < entries.size(); i++) {
+                    Row row = merged(entries.get(i));
+                    long[] state = states.get(i);
+                    row.watched = state[0] == 1;
+                    row.positionMs = state[1];
+                    row.watchedAt = state[2];
+                    row.synced = false;
                     write(row);
                 }
                 db.setTransactionSuccessful();

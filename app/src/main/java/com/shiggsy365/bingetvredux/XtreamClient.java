@@ -6,6 +6,8 @@ import android.net.Uri;
 import android.text.TextUtils;
 import android.util.Log;
 
+import com.shiggsy365.bingetvredux.stremio.Http;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -127,20 +129,11 @@ public final class XtreamClient {
      * user_info; null if the panel can't be asked quickly or doesn't say.
      */
     public int[] connections() {
-        HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new java.net.URL(apiUrl(null).build().toString())
-                    .openConnection();
-            connection.setConnectTimeout(CONNECTIONS_TIMEOUT_MS);
-            connection.setReadTimeout(CONNECTIONS_TIMEOUT_MS);
-            if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) return null;
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            try (InputStream in = connection.getInputStream()) {
-                byte[] buffer = new byte[8 * 1024];
-                int n;
-                while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
-            }
-            JSONObject user = new JSONObject(out.toString("UTF-8")).optJSONObject("user_info");
+            Http.Response r = Http.get(apiUrl(null).build().toString())
+                    .timeout(CONNECTIONS_TIMEOUT_MS).send();
+            if (r.status != HttpURLConnection.HTTP_OK) return null;
+            JSONObject user = new JSONObject(r.text()).optJSONObject("user_info");
             if (user == null || !user.has("active_cons") || !user.has("max_connections")) {
                 return null;
             }
@@ -149,8 +142,6 @@ public final class XtreamClient {
                     Integer.parseInt(user.optString("max_connections").trim())};
         } catch (IOException | JSONException | NumberFormatException e) {
             return null;
-        } finally {
-            if (connection != null) connection.disconnect();
         }
     }
 
@@ -185,9 +176,9 @@ public final class XtreamClient {
      */
     public List<Stream> getAllLiveStreams() throws IOException {
         List<Stream> streams = new ArrayList<>();
-        HttpURLConnection connection = Xmltv.open(apiUrl("get_live_streams").build().toString());
-        try (android.util.JsonReader reader = new android.util.JsonReader(
-                new java.io.InputStreamReader(Xmltv.body(connection), "UTF-8"))) {
+        try (Http.Body response = Xmltv.open(apiUrl("get_live_streams").build().toString());
+             android.util.JsonReader reader = new android.util.JsonReader(
+                new java.io.InputStreamReader(Xmltv.body(response), "UTF-8"))) {
             reader.beginArray();
             while (reader.hasNext()) {
                 int id = -1;
@@ -214,8 +205,6 @@ public final class XtreamClient {
                 }
             }
             reader.endArray();
-        } finally {
-            connection.disconnect();
         }
         return streams;
     }
@@ -226,9 +215,9 @@ public final class XtreamClient {
      */
     public java.util.Map<Integer, Integer> getArchiveDays() throws IOException {
         java.util.Map<Integer, Integer> days = new java.util.HashMap<>();
-        HttpURLConnection connection = Xmltv.open(apiUrl("get_live_streams").build().toString());
-        try (android.util.JsonReader reader = new android.util.JsonReader(
-                new java.io.InputStreamReader(Xmltv.body(connection), "UTF-8"))) {
+        try (Http.Body response = Xmltv.open(apiUrl("get_live_streams").build().toString());
+             android.util.JsonReader reader = new android.util.JsonReader(
+                new java.io.InputStreamReader(Xmltv.body(response), "UTF-8"))) {
             reader.beginArray();
             while (reader.hasNext()) {
                 int id = -1;
@@ -257,8 +246,6 @@ public final class XtreamClient {
                 if (id > 0 && archive) days.put(id, Math.max(1, duration));
             }
             reader.endArray();
-        } finally {
-            connection.disconnect();
         }
         return days;
     }
@@ -306,15 +293,12 @@ public final class XtreamClient {
     }
 
     private static String get(Uri url) throws IOException {
-        HttpURLConnection connection = Xmltv.open(url.toString());
-        try (InputStream in = Xmltv.body(connection)) {
+        try (Http.Body response = Xmltv.open(url.toString()); InputStream in = Xmltv.body(response)) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buffer = new byte[16 * 1024];
             int n;
             while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
             return out.toString("UTF-8");
-        } finally {
-            connection.disconnect();
         }
     }
 

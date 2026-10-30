@@ -15,6 +15,7 @@ import android.widget.ListPopupWindow;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.leanback.widget.BaseGridView;
 import androidx.leanback.widget.VerticalGridView;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -29,8 +30,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * A whole catalog as a grid of posters, loading more as focus nears the end. The focused title's
@@ -48,7 +47,7 @@ public class CatalogActivity extends Activity {
     private ImageView mFocusedLogo;
     private TextView mFocusedTitle;
     private TextView mFocusedDesc;
-    private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
+    private final Background.Tasks mExecutor = new Background.Tasks(1);
     private AddonStore.Entry mEntry;
     private Manifest.Extra mFilter;
     private List<String> mOptions = new ArrayList<>();
@@ -90,6 +89,12 @@ public class CatalogActivity extends Activity {
         mGrid.setNumColumns(COLUMNS);
         mGrid.setVerticalSpacing(getResources().getDimensionPixelSize(R.dimen.grid_spacing));
         mGrid.setAdapter(mAdapter);
+        // The focused row sits at the top of the grid (the rows above scroll out of sight
+        // rather than under the description), with room above for its card to grow.
+        mGrid.setWindowAlignment(BaseGridView.WINDOW_ALIGN_NO_EDGE);
+        mGrid.setWindowAlignmentOffset(mGrid.getPaddingTop());
+        mGrid.setWindowAlignmentOffsetPercent(0f);
+        mGrid.setItemAlignmentOffsetPercent(0f);
         // Up from the first row goes to the filter, at the far right of the top (the grid
         // keeps Up to itself otherwise).
         mGrid.setOnKeyInterceptListener(event -> {
@@ -265,9 +270,7 @@ public class CatalogActivity extends Activity {
             view.setOnClickListener(v -> startActivity(DetailsActivity.intent(
                     CatalogActivity.this, item)));
             view.setOnFocusChangeListener((v, focused) -> {
-                float scale = focused ? 1.08f : 1f;
-                v.animate().scaleX(scale).scaleY(scale).setDuration(120).start();
-                v.setElevation(focused ? 8f : 0f);
+                CardFocus.apply(v, focused, CardFocus.POSTER);
                 if (focused) showFocused(item);
                 if (focused && mItems.size() - position <= COLUMNS * 3) loadMore();
             });

@@ -35,7 +35,12 @@ jobs:
         run: |
           version=$(sed -n 's/.*versionName "\(.*\)"/\1/p' app/build.gradle)
           mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk "out/BingeTV-Redux-$version.apk"
+          # One for each ABI, and the universal one under the plain name (what 1.0.4 and
+          # older download when they update).
+          cp app/build/outputs/apk/release/app-universal-release.apk "out/BingeTV-Redux-$version.apk"
+          for abi in armeabi-v7a arm64-v8a; do
+            cp "app/build/outputs/apk/release/app-$abi-release.apk" "out/BingeTV-Redux-$version-$abi.apk"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: apk

@@ -67,10 +67,10 @@
             android:visibility="gone" />
     </FrameLayout>
 
+    <!-- clips the grid at its top, so rows scrolling up don't cover the description -->
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:clipChildren="false">
+        android:layout_height="match_parent">
 
         <androidx.leanback.widget.VerticalGridView
             android:id="@+id/grid"

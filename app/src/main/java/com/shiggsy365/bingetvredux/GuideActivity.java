@@ -37,8 +37,6 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * The live TV guide, laid out like a TV programme guide: group chips, details and a live
@@ -79,8 +77,8 @@ public class GuideActivity extends Activity {
 
     private final RowAdapter mAdapter = new RowAdapter();
     private LinearLayoutManager mLayoutManager;
-    private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
-    private final ExecutorService mLogoExecutor = Executors.newFixedThreadPool(2);
+    private final Background.Tasks mExecutor = new Background.Tasks(1);
+    private final Background.Tasks mLogoExecutor = new Background.Tasks(2);
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private DateFormat mTimeFormat;
     private final SimpleDateFormat mDateFormat = new SimpleDateFormat("EEE d/M", Locale.getDefault());

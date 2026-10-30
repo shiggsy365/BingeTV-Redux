@@ -129,6 +129,49 @@ public final class Settings {
         prefs(context).edit().putString(key, value).apply();
     }
 
+    // Live channels the profile tuned to, most recent first, for Home's On Now row. Kept with
+    // the settings (so it goes with the profile) but not one of them.
+    private static final String RECENT_CHANNELS = "recentChannels";
+    private static final int RECENT_CHANNELS_MAX = 30;
+
+    public static List<Long> recentChannels(Context context) {
+        List<Long> out = new ArrayList<>();
+        for (String id : prefs(context).getString(RECENT_CHANNELS, "").split(",")) {
+            try {
+                if (!id.isEmpty()) out.add(Long.parseLong(id));
+            } catch (NumberFormatException ignored) {
+                // Skip anything that isn't an id.
+            }
+        }
+        return out;
+    }
+
+    /** For backups: a profile's recent channels as stored, and putting them back. */
+    static String recentChannelsText(Context context, String profileId) {
+        return prefs(context, profileId).getString(RECENT_CHANNELS, "");
+    }
+
+    static void setRecentChannelsText(Context context, String profileId, String text) {
+        prefs(context, profileId).edit().putString(RECENT_CHANNELS, text).apply();
+    }
+
+    /** A profile's MDBList key put back (a backup made without passwords leaves it out). */
+    static void putMdblistKey(Context context, String profileId, String key) {
+        prefs(context, profileId).edit().putString(MDBLIST_KEY, key).apply();
+    }
+
+    public static void addRecentChannel(Context context, long channelId) {
+        List<Long> ids = recentChannels(context);
+        ids.remove(Long.valueOf(channelId));
+        ids.add(0, channelId);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < Math.min(ids.size(), RECENT_CHANNELS_MAX); i++) {
+            if (i > 0) sb.append(',');
+            sb.append(ids.get(i));
+        }
+        prefs(context).edit().putString(RECENT_CHANNELS, sb.toString()).apply();
+    }
+
     /** The profile's stream order and filters, for a film or an episode. */
     public static Streams.Prefs streamPrefs(Context context, boolean episode) {
         Streams.Prefs p = new Streams.Prefs();

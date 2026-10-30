@@ -28,6 +28,20 @@ final class SubtitleStyle {
         return context.getApplicationContext().getSharedPreferences("subtitle_style", Context.MODE_PRIVATE);
     }
 
+    /** For backups: the style, and putting one back. */
+    static org.json.JSONObject toJson(Context context) throws org.json.JSONException {
+        return new org.json.JSONObject().put("colour", colour(context)).put("size", size(context))
+                .put("outline", outline(context));
+    }
+
+    static void restore(Context context, org.json.JSONObject style) {
+        prefs(context).edit()
+                .putInt("colour", Math.max(0, Math.min(COLOURS.length - 1, style.optInt("colour", 0))))
+                .putInt("size2", Math.max(0, Math.min(SIZES.length - 1, style.optInt("size", 2))))
+                .putInt("outline", Math.max(0, Math.min(OUTLINES.length - 1, style.optInt("outline", 0))))
+                .apply();
+    }
+
     static int colour(Context context) {
         return prefs(context).getInt("colour", 0);
     }

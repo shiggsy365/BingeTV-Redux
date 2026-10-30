@@ -56,8 +56,10 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     private String mPage = PAGE_HOME;
     // The catalogs on the page, to tell when the web page has changed them.
     private List<String> mPageKeys = new ArrayList<>();
-    // The profile and watch state the page was built for: either changing rebuilds it.
-    private String mPageState = "";
+    // The profile the page was built for (another rebuilds it), and the watch state its own
+    // rows show (a change reloads just those rows).
+    private String mPageProfile = "";
+    private int mWatchVersion;
     private MetaItem mHeroItem;
     private View mHero;
     private View mBackdropDim;
@@ -67,10 +69,15 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     private MetaItem mPendingHero;
     private final Runnable mShowHero = () -> bindHero(mPendingHero);
     private HeroTrailer mTrailer;
+    // A guide sync finished: On Now's channels and programmes may differ.
+    private final Runnable mGuideChanged =
+            () -> mRows.reload(java.util.Collections.singletonList(HomeRows.ON_NOW));
+    private final Background.Tasks mTasks = new Background.Tasks(1);
     private final Runnable mClockTick = new Runnable() {
         @Override
         public void run() {
             mClock.setText(mTimeFormat.format(new Date()));
+            if (HomeRows.onNowStale()) mRows.reload(java.util.Collections.singletonList(HomeRows.ON_NOW));
             mHandler.postDelayed(this, CLOCK_TICK_MS);
         }
     };
@@ -104,7 +111,17 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         mEmpty = findViewById(R.id.empty);
         mRowsView = findViewById(R.id.rows);
         mRows = new CatalogRows(this, mRowsView, this);
+        // Up from the first row goes to the menu bar (the grid keeps Up to itself otherwise).
+        mRowsView.setOnKeyInterceptListener(event -> {
+            if (event.getKeyCode() != KeyEvent.KEYCODE_DPAD_UP
+                    || mRowsView.getSelectedPosition() > 0 || !mRowsView.hasFocus()) {
+                return false;
+            }
+            if (event.getAction() == KeyEvent.ACTION_DOWN) focusMenu();
+            return true;
+        });
         mRows.setOnChanged(this::updateEmpty);
+        GuideStore.addListener(mGuideChanged);
         mTrailer = new HeroTrailer(this, findViewById(R.id.hero_video), mBackdrop, mBackdropFull,
                 findViewById(R.id.clock));
         if (savedInstanceState != null) mPage = savedInstanceState.getString("page", PAGE_HOME);
@@ -140,9 +157,29 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         buildMenu();
         Mdblist.syncIfDue(this);
         Updates.checkIfDue(this);
-        // Addons and catalogs may have changed on the web page, and what's been watched.
-        if (!pageKeys(mPage).equals(mPageKeys) || !pageState().equals(mPageState)) {
+        // Reading a profile's whole watch history takes a second or two on a Fire TV Stick:
+        // off the main thread, then the page (its badges and rows need it).
+        if (!WatchStore.isOpen()) {
+            if (mRows.shownCount() == 0) updateEmpty();
+            mTasks.execute(() -> {
+                WatchStore.get(getApplicationContext());
+                mHandler.post(() -> {
+                    if (!isDestroyed() && WatchStore.isOpen()) refreshPage();
+                });
+            });
+            return;
+        }
+        refreshPage();
+    }
+
+    private void refreshPage() {
+        // Addons and catalogs may have changed on the web page, or the profile: rebuild. What's
+        // been watched: just Home's own rows, in place, so the focus stays where it was.
+        if (!pageKeys(mPage).equals(mPageKeys) || !Profiles.current(this).id.equals(mPageProfile)) {
             showPage(mPage);
+        } else if (WatchStore.get(this).version() != mWatchVersion) {
+            mWatchVersion = WatchStore.get(this).version();
+            mRows.reload(HomeRows.WATCH_ROWS);
         }
     }
 
@@ -161,6 +198,8 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
 
     @Override
     protected void onDestroy() {
+        GuideStore.removeListener(mGuideChanged);
+        mTasks.shutdownNow();
         mRows.destroy();
         mTrailer.destroy();
         mHandler.removeCallbacksAndMessages(null);
@@ -169,6 +208,11 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // A remote's search key (where the system passes it on) opens Search.
+        if (keyCode == KeyEvent.KEYCODE_SEARCH) {
+            startActivity(new Intent(this, SearchActivity.class));
+            return true;
+        }
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             // Back goes up to the menu, then Home, then leaves.
             if (mRowsView.hasFocus()) {
@@ -300,7 +344,8 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         mPage = page;
         markMenu();
         mPageKeys = pageKeys(page);
-        mPageState = pageState();
+        mPageProfile = Profiles.current(this).id;
+        mWatchVersion = WatchStore.get(this).version();
         mHeroItem = null;
         bindHero(null);
         mRows.setRows(pageRows(page));
@@ -318,7 +363,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         if (Stremio.addons(this).all().isEmpty()) {
             mEmpty.setText("Add your Stremio addons to fill this page.\n\n"
                     + "Select the logo at the top left for the web page's address and PIN, then use its Addons page.");
-        } else if (!mRows.allLoaded()) {
+        } else if (!mRows.allLoaded() || !WatchStore.isOpen()) {
             mEmpty.setText("Loading…");
         } else {
             mEmpty.setText("Nothing to show here.\n\n"
@@ -338,17 +383,24 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     @Override
     public void onItemClicked(MetaItem item) {
         if (item.id.startsWith(HomeRows.LIVE_PREFIX)) {
-            startActivity(new Intent(this, PlayerActivity.class)
+            long channelId = Long.parseLong(item.id.substring(HomeRows.LIVE_PREFIX.length()));
+            Intent player = new Intent(this, PlayerActivity.class)
                     .putExtra(PlayerActivity.EXTRA_GROUP_ID, GuideData.ALL_GROUP_ID)
-                    .putExtra(PlayerActivity.EXTRA_CHANNEL_ID,
-                            Long.parseLong(item.id.substring(HomeRows.LIVE_PREFIX.length()))));
+                    .putExtra(PlayerActivity.EXTRA_CHANNEL_ID, channelId);
+            // The player zaps through the whole guide, which On Now doesn't load.
+            if (GuideData.lastGroup(GuideData.ALL_GROUP_ID) != null) {
+                startActivity(player);
+                return;
+            }
+            mTasks.execute(() -> {
+                GuideData.load(getApplicationContext());
+                mHandler.post(() -> {
+                    if (!isDestroyed()) startActivity(player);
+                });
+            });
             return;
         }
         startActivity(DetailsActivity.intent(this, item));
-    }
-
-    private String pageState() {
-        return Profiles.current(this).id + "|" + WatchStore.get(this).version();
     }
 
     private void updateMenuMode() {

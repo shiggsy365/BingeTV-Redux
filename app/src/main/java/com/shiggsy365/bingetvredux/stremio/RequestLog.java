@@ -25,6 +25,6 @@ public final class RequestLog {
     }
 
     static String mask(String url) {
-        return url.replaceAll("(?i)((?:api_?key|key|token)=)[^&]*", "$1***");
+        return url.replaceAll("(?i)((?:api_?key|key|token|password|username)=)[^&]*", "$1***");
     }
 }

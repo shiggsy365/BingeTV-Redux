@@ -4,17 +4,14 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Log;
 
+import com.shiggsy365.bingetvredux.stremio.Http;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -154,24 +151,15 @@ public final class Youtube {
         JSONObject body = new JSONObject()
                 .put("context", new JSONObject().put("client", client))
                 .put("videoId", videoId).put("contentCheckOk", true).put("racyCheckOk", true);
-        HttpURLConnection conn = (HttpURLConnection) new URL(PLAYER + config[0]).openConnection();
-        try {
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
-            conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("User-Agent", AGENT);
-            conn.setRequestProperty("Origin", "https://www.youtube.com");
-            conn.setRequestProperty("X-YouTube-Client-Name", "101");
-            conn.setRequestProperty("X-YouTube-Client-Version", CLIENT_VERSION);
-            conn.setRequestProperty("X-Goog-Visitor-Id", config[1]);
-            try (OutputStream out = conn.getOutputStream()) {
-                out.write(body.toString().getBytes(StandardCharsets.UTF_8));
-            }
-            return new JSONObject(read(conn.getInputStream()));
-        } finally {
-            conn.disconnect();
-        }
+        Http.Response r = Http.request("POST", PLAYER + config[0]).timeout(TIMEOUT_MS)
+                .json(body.toString())
+                .header("User-Agent", AGENT)
+                .header("Origin", "https://www.youtube.com")
+                .header("X-YouTube-Client-Name", "101")
+                .header("X-YouTube-Client-Version", CLIENT_VERSION)
+                .header("X-Goog-Visitor-Id", config[1]).send();
+        if (!r.ok()) throw new IOException("YouTube answered HTTP " + r.status);
+        return new JSONObject(r.text());
     }
 
     /** {API key, visitor id} from a watch page, kept for a few hours. */
@@ -182,32 +170,15 @@ public final class Youtube {
         if (!refresh && System.currentTimeMillis() - prefs.getLong("at", 0) < CONFIG_FOR_MS) {
             return new String[]{prefs.getString("key", ""), prefs.getString("visitor", "")};
         }
-        HttpURLConnection conn = (HttpURLConnection) new URL(WATCH).openConnection();
-        String page;
-        try {
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
-            conn.setRequestProperty("User-Agent", WEB_AGENT);
-            conn.setRequestProperty("Accept-Language", "en-GB");
-            page = read(conn.getInputStream());
-        } finally {
-            conn.disconnect();
-        }
+        Http.Response r = Http.get(WATCH).timeout(TIMEOUT_MS).header("User-Agent", WEB_AGENT)
+                .header("Accept-Language", "en-GB").send();
+        if (!r.ok()) throw new IOException("YouTube answered HTTP " + r.status);
+        String page = r.text();
         Matcher key = Pattern.compile("\"INNERTUBE_API_KEY\":\"([^\"]+)\"").matcher(page);
         Matcher visitor = Pattern.compile("\"VISITOR_DATA\":\"([^\"]+)\"").matcher(page);
         if (!key.find() || !visitor.find()) throw new YoutubeException("No API key in YouTube's page");
         prefs.edit().putLong("at", System.currentTimeMillis()).putString("key", key.group(1))
                 .putString("visitor", visitor.group(1)).apply();
         return new String[]{key.group(1), visitor.group(1)};
-    }
-
-    private static String read(InputStream in) throws IOException {
-        try (InputStream input = in) {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            byte[] buffer = new byte[32 * 1024];
-            int n;
-            while ((n = input.read(buffer)) != -1) out.write(buffer, 0, n);
-            return new String(out.toByteArray(), StandardCharsets.UTF_8);
-        }
     }
 }

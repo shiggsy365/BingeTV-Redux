@@ -49,21 +49,46 @@ public final class Streams {
         }
     }
 
+    /** Hears the streams found so far, each time another addon answers. */
+    public interface Progress {
+        void found(Found soFar, int answered, int asked);
+    }
+
     /**
      * Asks every addon with streams for this type and id at once. Streams come back in addon
      * order, then each addon's own order.
      */
     public static Found fetch(StremioClient client, AddonStore store, String type, String id) {
+        return fetch(client, store, type, id, null);
+    }
+
+    /** {@link #fetch}, telling {@code progress} as each addon answers. */
+    public static Found fetch(StremioClient client, AddonStore store, String type, String id,
+            Progress progress) {
         List<AddonStore.Addon> addons = store.addonsFor("stream", type, id);
         List<Callable<JSONObject>> tasks = new ArrayList<>();
         for (AddonStore.Addon a : addons) {
             tasks.add(() -> client.resource(a.transportUrl, "stream", type, id, null));
         }
-        List<Parallel.Result<JSONObject>> results = Parallel.run(tasks, TIMEOUT_MS);
+        List<Parallel.Result<JSONObject>> soFar = new ArrayList<>();
+        for (int i = 0; i < addons.size(); i++) soFar.add(null);
+        int[] answered = {0};
+        Parallel.Each<JSONObject> each = progress == null ? null : (index, result) -> {
+            soFar.set(index, result);
+            answered[0]++;
+            progress.found(collect(addons, soFar), answered[0], addons.size());
+        };
+        return collect(addons, Parallel.run(tasks, TIMEOUT_MS, each));
+    }
+
+    /** The streams in addon order from the results so far (null: no answer yet). */
+    private static Found collect(List<AddonStore.Addon> addons,
+            List<Parallel.Result<JSONObject>> results) {
         List<Stream> streams = new ArrayList<>();
         List<String> errors = new ArrayList<>();
         for (int i = 0; i < addons.size(); i++) {
             Parallel.Result<JSONObject> r = results.get(i);
+            if (r == null) continue;
             String name = addons.get(i).manifest.name;
             if (!r.ok()) {
                 errors.add(name + ": " + r.error.getMessage());

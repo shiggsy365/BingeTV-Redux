@@ -33,6 +33,14 @@ final class HomeRows {
     private static final int NEXT_UP_SHOWS = 60;
     private static final int ON_NOW_LIMIT = 30;
     private static final long NEXT_UP_TIMEOUT_MS = 20_000;
+    static final String CONTINUE = "Continue Watching";
+    static final String NEXT_UP = "Next Up";
+    static final String WATCHLIST = "Watchlist";
+    static final String ON_NOW = "On Now";
+    /** The rows that change with what's been watched. */
+    static final List<String> WATCH_ROWS = java.util.Arrays.asList(CONTINUE, NEXT_UP, WATCHLIST);
+    // When the first programme shown in On Now ends (0: nothing shown), for its refresh.
+    private static volatile long sOnNowChangesAt;
 
     private HomeRows() {}
 
@@ -41,23 +49,29 @@ final class HomeRows {
         List<CatalogRows.Row> rows = new ArrayList<>();
         boolean combined = Settings.bool(app, Settings.CONTINUE_WITH_NEXT_UP);
         if (Settings.bool(app, Settings.ROW_CONTINUE)) {
-            rows.add(new CatalogRows.Row("Continue Watching", () -> combined
+            rows.add(new CatalogRows.Row(CONTINUE, () -> combined
                     ? newestFirst(continueWatching(app), nextUp(app)) : items(continueWatching(app))));
         }
         if (Settings.bool(app, Settings.ROW_NEXT_UP) && !(combined && Settings.bool(app, Settings.ROW_CONTINUE))) {
-            rows.add(new CatalogRows.Row("Next Up", () -> items(nextUp(app))));
+            rows.add(new CatalogRows.Row(NEXT_UP, () -> items(nextUp(app))));
         }
         if (Settings.bool(app, Settings.ROW_WATCHLIST) && Mdblist.enabled(app)) {
-            rows.add(new CatalogRows.Row("Watchlist", () -> withMetas(app, Mdblist.watchlist(app, false))));
+            rows.add(new CatalogRows.Row(WATCHLIST, () -> withMetas(app, Mdblist.watchlist(app, false))));
         }
         if (Settings.bool(app, Settings.ROW_ON_NOW) && Settings.bool(app, Settings.LIVE_TV)) {
-            rows.add(new CatalogRows.Row("On Now", () -> onNow(app)));
+            rows.add(new CatalogRows.Row(ON_NOW, () -> onNow(app)));
         }
         return rows;
     }
 
+    /** Whether a programme On Now shows has ended since it loaded. */
+    static boolean onNowStale() {
+        long at = sOnNowChangesAt;
+        return at > 0 && System.currentTimeMillis() >= at;
+    }
+
     /** A row's item and when it was last active (for the combined row's order). */
-    private static final class Timed {
+    static final class Timed {
         final long at;
         final MetaItem item;
 
@@ -74,7 +88,7 @@ final class HomeRows {
     }
 
     /** Part-watched items and next episodes in one row, most recently active first. */
-    private static List<MetaItem> newestFirst(List<Timed> a, List<Timed> b) {
+    static List<MetaItem> newestFirst(List<Timed> a, List<Timed> b) {
         List<Timed> all = new ArrayList<>(a);
         all.addAll(b);
         java.util.Collections.sort(all, (x, y) -> Long.compare(y.at, x.at));
@@ -165,7 +179,8 @@ final class HomeRows {
         return out;
     }
 
-    private static Video next(MetaItem meta, Set<String> watched, String today) {
+    /** The episode after the furthest one watched, if it has aired; specials don't count. */
+    static Video next(MetaItem meta, Set<String> watched, String today) {
         List<Video> episodes = new ArrayList<>();
         for (int season : meta.seasons()) if (season != 0) episodes.addAll(meta.episodes(season));
         int last = -1;
@@ -183,15 +198,14 @@ final class HomeRows {
         return null;
     }
 
-    /** Live channels with what's on, from every group: the logo as a square tile, and a mini
+    /** Live channels with what's on, recently watched first: the logo as a square tile, and a mini
      *  guide (what's on now and next) above the current program's description, and the
      *  program's own picture, when the guide has one, as the backdrop. */
     private static List<MetaItem> onNow(Context context) throws JSONException {
         List<MetaItem> out = new ArrayList<>();
-        List<GuideData.Group> groups = GuideData.load(context);
-        if (groups.isEmpty()) return out;
-        for (GuideData.Channel c : groups.get(0).channels) {
-            if (c.now == null) continue;
+        long changesAt = 0;
+        for (GuideData.Channel c : GuideData.onNow(context, Settings.recentChannels(context),
+                ON_NOW_LIMIT)) {
             File logo = GuideStore.logoFile(context, (int) c.id);
             String logoUri = logo.exists() ? Uri.fromFile(logo).toString() : "";
             JSONObject data = new JSONObject()
@@ -204,8 +218,9 @@ final class HomeRows {
                     + (c.next != null ? "\nOn Next – " + c.next.title : "");
             MetaItem item = MetaItem.preview(data, null);
             if (item != null) out.add(item.forRow(guide, c.now.description));
-            if (out.size() >= ON_NOW_LIMIT) break;
+            changesAt = changesAt == 0 ? c.now.endMs : Math.min(changesAt, c.now.endMs);
         }
+        sOnNowChangesAt = changesAt;
         return out;
     }
 

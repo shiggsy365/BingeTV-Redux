@@ -38,8 +38,6 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * Full-screen playback for the live TV guide. Up/Down (and channel keys) zap through the group
@@ -64,6 +62,15 @@ public class PlayerActivity extends Activity {
     private static final String PREFS = "player";
     private static final String PREF_SUBTITLES = "subtitles";
 
+    /** For backups: whether live TV's subtitles are on, and putting it back. */
+    static boolean subtitlesOn(android.content.Context context) {
+        return context.getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_SUBTITLES, false);
+    }
+
+    static void setSubtitlesOn(android.content.Context context, boolean on) {
+        context.getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_SUBTITLES, on).apply();
+    }
+
     private static final long OVERLAY_MS = 5_000;
     private static final long OVERLAY_TICK_MS = 1_000;
     private static final long WATCHDOG_MS = 2_000;
@@ -86,7 +93,7 @@ public class PlayerActivity extends Activity {
     private View mChannelsButton;
 
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
+    private final Background.Tasks mExecutor = new Background.Tasks(1);
     private DateFormat mTimeFormat;
     private ExoPlayer mPlayer;
     // Puts the TV in the display mode that suits the video (see FrameRateMatcher).
@@ -242,6 +249,7 @@ public class PlayerActivity extends Activity {
         mStreamsTried = 0;
         mManualStream = false;
         mAccountBusy = false;
+        Settings.addRecentChannel(this, mChannels.get(index).id);
         playStream(0);
     }
 

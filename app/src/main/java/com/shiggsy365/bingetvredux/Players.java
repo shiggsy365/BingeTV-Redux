@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Map;
 
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegAudioRenderer;
+import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary;
 
 /**
  * Builds the app's players. Video and audio use the device's own decoders; audio they can't
@@ -29,7 +30,19 @@ import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegAudioRenderer;
  */
 @OptIn(markerClass = UnstableApi.class)
 public final class Players {
+    private static boolean sLogged;
+
     private Players() {}
+
+    // Once, in logcat: whether FFmpeg loaded (a shrunk build that broke it would say so).
+    private static synchronized void logFfmpeg() {
+        if (sLogged) return;
+        sLogged = true;
+        android.util.Log.i("Players", "FFmpeg audio " + (FfmpegLibrary.isAvailable()
+                ? FfmpegLibrary.getVersion() + "; DTS " + FfmpegLibrary.supportsFormat(
+                        androidx.media3.common.MimeTypes.AUDIO_DTS)
+                : "unavailable"));
+    }
 
     public static ExoPlayer build(Context context) {
         return build(context, null);
@@ -72,6 +85,7 @@ public final class Players {
     private static final class RenderersFactory extends DefaultRenderersFactory {
         RenderersFactory(Context context) {
             super(context);
+            logFfmpeg();
             setEnableDecoderFallback(true);
         }
 

@@ -70,6 +70,21 @@ public class StreamsTest {
     }
 
     @Test
+    public void sizeLimitKeepsUnknownSizes() throws Exception {
+        List<Stream> all = new ArrayList<>();
+        all.add(stream("{\"name\":\"1080p\",\"title\":\"30 GB\",\"url\":\"big\"}", 0));
+        all.add(stream("{\"name\":\"1080p\",\"title\":\"4 GB\",\"url\":\"small\"}", 0));
+        all.add(stream("{\"name\":\"1080p\",\"url\":\"unknown\"}", 0));
+        all.add(stream("{\"name\":\"4K\",\"title\":\"8 GB\",\"url\":\"uhd\"}", 0));
+        Streams.Prefs prefs = new Streams.Prefs();
+        prefs.maxSize = 10_000_000_000L;
+        prefs.maxResolution = 1080;
+        List<String> urls = new ArrayList<>();
+        for (Stream s : Streams.prepare(all, prefs)) urls.add(s.url);
+        assertEquals(Arrays.asList("small", "unknown"), urls);
+    }
+
+    @Test
     public void cleanText() {
         assertEquals("a b\nc", Stream.cleanText("a​   b\n\n  c  "));
     }

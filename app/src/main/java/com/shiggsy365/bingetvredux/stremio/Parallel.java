@@ -1,11 +1,11 @@
 package com.shiggsy365.bingetvredux.stremio;
 
+import com.shiggsy365.bingetvredux.Background;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -31,22 +31,56 @@ public final class Parallel {
         }
     }
 
+    /** Hears each task's result as it finishes, one at a time, on the task's thread. */
+    public interface Each<T> {
+        void done(int index, Result<T> result);
+    }
+
     /**
      * Runs the tasks together and returns their results in task order. Tasks still running
      * after {@code timeoutMs} count as failed.
      */
     public static <T> List<Result<T>> run(List<Callable<T>> tasks, long timeoutMs) {
+        return run(tasks, timeoutMs, null);
+    }
+
+    /** {@link #run(List, long)}, telling {@code each} about every result as it comes. */
+    public static <T> List<Result<T>> run(List<Callable<T>> tasks, long timeoutMs, Each<T> each) {
         List<Result<T>> results = new ArrayList<>();
         if (tasks.isEmpty()) return results;
         if (tasks.size() == 1) {
+            Result<T> result;
             try {
-                results.add(new Result<>(tasks.get(0).call(), null));
+                result = new Result<>(tasks.get(0).call(), null);
             } catch (Exception e) {
-                results.add(new Result<>(null, e));
+                result = new Result<>(null, e);
             }
+            if (each != null) each.done(0, result);
+            results.add(result);
             return results;
         }
-        ExecutorService pool = Executors.newFixedThreadPool(Math.min(MAX_THREADS, tasks.size()));
+        if (each != null) {
+            List<Callable<T>> told = new ArrayList<>();
+            for (int i = 0; i < tasks.size(); i++) {
+                int index = i;
+                Callable<T> task = tasks.get(i);
+                told.add(() -> {
+                    Result<T> result;
+                    try {
+                        result = new Result<>(task.call(), null);
+                    } catch (Exception e) {
+                        result = new Result<>(null, e);
+                    }
+                    synchronized (each) {
+                        each.done(index, result);
+                    }
+                    if (!result.ok()) throw result.error;
+                    return result.value;
+                });
+            }
+            tasks = told;
+        }
+        Background.Tasks pool = new Background.Tasks(Math.min(MAX_THREADS, tasks.size()));
         try {
             List<Future<T>> futures = new ArrayList<>();
             for (Callable<T> task : tasks) futures.add(pool.submit(task));

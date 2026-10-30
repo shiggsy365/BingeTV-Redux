@@ -15,6 +15,18 @@
         <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 
+    <!-- Up Next: a remote button and what it does. -->
+    <style name="UpNextChip" parent="Chip.Small">
+        <item name="android:background">@drawable/up_next_chip</item>
+        <item name="android:paddingStart">8dp</item>
+        <item name="android:paddingEnd">8dp</item>
+        <item name="android:paddingTop">2dp</item>
+        <item name="android:paddingBottom">2dp</item>
+        <item name="android:textColor">#FFFFFFFF</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
     <style name="Chip.Small.Catchup">
         <item name="android:background">@drawable/chip_catchup</item>
     </style>

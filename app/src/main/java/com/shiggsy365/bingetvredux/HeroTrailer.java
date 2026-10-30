@@ -12,8 +12,6 @@ import androidx.media3.ui.PlayerView;
 import com.shiggsy365.bingetvredux.stremio.MetaItem;
 import com.shiggsy365.bingetvredux.stremio.Metas;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * Home's trailers: when focus rests on a title for a few seconds (the profile's setting), its
@@ -30,7 +28,7 @@ final class HeroTrailer {
     // The artwork that fades out while a trailer plays.
     private final View[] mArtwork;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
+    private final Background.Tasks mExecutor = new Background.Tasks(1);
     private ExoPlayer mPlayer;
     private MetaItem mItem;
     // Which title is current, so a slow lookup for an earlier one is dropped.

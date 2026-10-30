@@ -3,6 +3,8 @@ package com.shiggsy365.bingetvredux;
 import android.text.TextUtils;
 import android.util.Xml;
 
+import com.shiggsy365.bingetvredux.stremio.Http;
+
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 
@@ -70,8 +72,7 @@ public final class Xmltv {
     public static List<GuideChannel> readChannels(String url)
             throws IOException, XmlPullParserException {
         List<GuideChannel> channels = new ArrayList<>();
-        HttpURLConnection connection = open(url);
-        try (InputStream in = body(connection)) {
+        try (Http.Body response = open(url); InputStream in = body(response)) {
             XmlPullParser parser = newParser(in);
             int event = parser.getEventType();
             while (event != XmlPullParser.END_DOCUMENT) {
@@ -89,8 +90,6 @@ public final class Xmltv {
                 }
                 event = parser.next();
             }
-        } finally {
-            connection.disconnect();
         }
         return channels;
     }
@@ -106,8 +105,7 @@ public final class Xmltv {
         Map<String, List<Programme>> result = new HashMap<>();
         for (String id : channelIds) result.put(id, new ArrayList<>());
 
-        HttpURLConnection connection = open(url);
-        try (InputStream in = body(connection)) {
+        try (Http.Body response = open(url); InputStream in = body(response)) {
             XmlPullParser parser = newParser(in);
             SimpleDateFormat format = new SimpleDateFormat("yyyyMMddHHmmss Z", Locale.US);
             int event = parser.getEventType();
@@ -126,8 +124,6 @@ public final class Xmltv {
                 }
                 event = parser.next();
             }
-        } finally {
-            connection.disconnect();
         }
         return result;
     }
@@ -225,30 +221,19 @@ public final class Xmltv {
         }
     }
 
-    static HttpURLConnection open(String url) throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
-        connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-        connection.setReadTimeout(READ_TIMEOUT_MS);
-        connection.setRequestProperty("Accept-Encoding", "gzip");
-        connection.setInstanceFollowRedirects(true);
-        int code = connection.getResponseCode();
-        if (code != HttpURLConnection.HTTP_OK) {
-            connection.disconnect();
-            // Don't log the full URL: Xtream URLs carry the password.
-            throw new IOException("HTTP " + code + " from " + connection.getURL().getHost());
+    static Http.Body open(String url) throws IOException {
+        Http.Body response = Http.get(url).timeouts(CONNECT_TIMEOUT_MS, READ_TIMEOUT_MS).open();
+        if (response.status != HttpURLConnection.HTTP_OK) {
+            response.close();
+            // Don't show the full URL: Xtream URLs carry the password.
+            throw new IOException("HTTP " + response.status + " from " + response.host());
         }
-        return connection;
+        return response;
     }
 
-    /**
-     * Opens the response body, un-gzipping it whether the server compressed the transfer or
-     * the file itself is a .gz.
-     */
-    static InputStream body(HttpURLConnection connection) throws IOException {
-        InputStream in = new BufferedInputStream(connection.getInputStream(), 64 * 1024);
-        if ("gzip".equalsIgnoreCase(connection.getContentEncoding())) {
-            in = new BufferedInputStream(new GZIPInputStream(in, 64 * 1024), 64 * 1024);
-        }
+    /** The response body, un-gzipped if the file itself is a .gz (the transfer already is). */
+    static InputStream body(Http.Body response) throws IOException {
+        InputStream in = new BufferedInputStream(response.in, 64 * 1024);
         in.mark(2);
         int b1 = in.read();
         int b2 = in.read();

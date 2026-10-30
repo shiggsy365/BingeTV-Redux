@@ -61,6 +61,23 @@
             android:layout_marginTop="12dp"
             android:indeterminate="true"
             android:indeterminateTint="@color/guide_accent" />
+
+        <!-- When the profile's filters hid every stream. -->
+        <TextView
+            android:id="@+id/show_hidden"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:background="@drawable/info_pill"
+            android:focusable="true"
+            android:paddingStart="24dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="24dp"
+            android:paddingBottom="10dp"
+            android:text="Show them anyway"
+            android:textColor="#FFFFFFFF"
+            android:textSize="16sp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <!-- ======== the list -->

@@ -35,9 +35,16 @@ public final class Playback {
     public List<Stream> streams = new ArrayList<>();
     /** The stream to start with; if it fails, the next ones are tried in turn. */
     public int start;
+    /** The subtitle addons' tracks; they can come after playback has started (see below). */
     public List<Subtitles.Track> subtitles = new ArrayList<>();
+    private boolean mSubtitlesKnown;
+    private Runnable mOnSubtitles;
 
     private static Playback sCurrent;
+    // Waits for subtitles beyond the screen that asked for them (StreamsActivity closes as
+    // playback starts).
+    private static final Background.Tasks sSubtitleTasks = new Background.Tasks(2);
+    private static final android.os.Handler sMain = new android.os.Handler(android.os.Looper.getMainLooper());
 
     public Playback(MetaItem meta, Video video, long startMs, String bingeGroup) {
         this.meta = meta;
@@ -59,6 +66,53 @@ public final class Playback {
         if (video == null) return null;
         String code = DetailsActivity.episodeCode(video);
         return video.title.isEmpty() || code.equals(video.title) ? code : code + "  " + video.title;
+    }
+
+    /** Asks the subtitle addons, without holding up the streams (see subtitlesFrom). */
+    void findSubtitles(Context context) {
+        Context app = context.getApplicationContext();
+        List<String> languages = Settings.subtitleLanguages(app);
+        java.util.concurrent.FutureTask<List<Subtitles.Track>> fetch = new java.util.concurrent.FutureTask<>(
+                () -> Subtitles.fetch(Stremio.client(app), Stremio.addons(app), meta.type, videoId(),
+                        null, languages));
+        // Run here and waited on here: one task, so waiting can't hold up another fetch.
+        sSubtitleTasks.execute(() -> {
+            fetch.run();
+            deliver(fetch);
+        });
+    }
+
+    /**
+     * Takes the subtitles from {@code tracks} (found ahead of time) when they come; whoever is
+     * listening (the player) hears on the main thread.
+     */
+    void subtitlesFrom(java.util.concurrent.Future<List<Subtitles.Track>> tracks) {
+        sSubtitleTasks.execute(() -> deliver(tracks));
+    }
+
+    private void deliver(java.util.concurrent.Future<List<Subtitles.Track>> tracks) {
+        List<Subtitles.Track> found;
+        try {
+            found = tracks.get();
+        } catch (Exception e) {
+            found = new ArrayList<>();
+        }
+        List<Subtitles.Track> result = found;
+        sMain.post(() -> {
+            subtitles = result;
+            mSubtitlesKnown = true;
+            if (mOnSubtitles != null) mOnSubtitles.run();
+        });
+    }
+
+    /** Main thread: whether the subtitle addons have answered. */
+    boolean subtitlesKnown() {
+        return mSubtitlesKnown;
+    }
+
+    /** Main thread: run when the subtitles come (if they haven't yet); null to stop. */
+    void setOnSubtitles(Runnable listener) {
+        mOnSubtitles = listener;
     }
 
     /** Finds the streams (StreamsActivity), then plays or lists them. */

@@ -37,8 +37,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * A film's or show's info page, laid out as BingeTV's. It opens with what the poster already
@@ -87,7 +85,13 @@ public class DetailsActivity extends Activity {
     private HorizontalGridView mSimilar;
 
     // One thread for the page's details; the watchlist and similar titles load alongside.
-    private final ExecutorService mExecutor = Executors.newFixedThreadPool(3);
+    // The last Watched press, undone by pressing again within UNDO_MS.
+    private static final long UNDO_MS = 8_000;
+    private List<WatchStore.Entry> mUndo;
+    private List<long[]> mUndoStates;
+    private String mUndoTarget;
+    private long mUndoAt;
+    private final Background.Tasks mExecutor = new Background.Tasks(3);
     private String mType;
     private String mId;
     private MetaItem mItem;
@@ -570,6 +574,18 @@ public class DetailsActivity extends Activity {
 
     private void toggleWatched() {
         WatchStore store = WatchStore.get(this);
+        // Pressed again straight after: put back what was there (part-watched episodes too).
+        String target = watchedLabel().replaceFirst(" (un)?watched$", "");
+        if (mUndo != null && target.equals(mUndoTarget)
+                && System.currentTimeMillis() - mUndoAt < UNDO_MS) {
+            store.restoreWatched(mUndo, mUndoStates);
+            mUndo = null;
+            Toast.makeText(this, "Undone", Toast.LENGTH_SHORT).show();
+            updateWatched();
+            updatePlay();
+            notifyChanged(mEpisodes, mSeasons);
+            return;
+        }
         List<WatchStore.Entry> entries = new ArrayList<>();
         boolean watched = !isWatched();
         if (mPicked != null) {
@@ -581,7 +597,15 @@ public class DetailsActivity extends Activity {
         } else {
             entries.add(new Playback(mItem, null, 0, "").entry(null));
         }
+        mUndo = entries;
+        mUndoStates = store.watchedState(entries);
+        mUndoTarget = target;
+        mUndoAt = System.currentTimeMillis();
         store.setWatched(entries, watched);
+        String what = mPicked != null ? episodeCode(mPicked)
+                : mItem.hasSeasons() ? seasonName(mSeason) : mItem.name;
+        Toast.makeText(this, what + " marked " + (watched ? "watched" : "unwatched")
+                + "  ·  select again to undo", Toast.LENGTH_SHORT).show();
         updateWatched();
         updatePlay();
         notifyChanged(mEpisodes, mSeasons);
@@ -830,8 +854,7 @@ public class DetailsActivity extends Activity {
             Badges.bind(card, item);
             card.setOnClickListener(v -> startActivity(DetailsActivity.intent(DetailsActivity.this, item)));
             card.setOnFocusChangeListener((v, focused) -> {
-                float scale = focused ? 1.06f : 1f;
-                v.animate().scaleX(scale).scaleY(scale).setDuration(120).start();
+                CardFocus.apply(v, focused, CardFocus.SMALL);
             });
         }
 

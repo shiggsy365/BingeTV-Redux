@@ -19,17 +19,14 @@ import androidx.media3.extractor.text.subrip.SubripParser;
 import androidx.media3.extractor.text.webvtt.WebvttParser;
 import androidx.media3.ui.SubtitleView;
 
+import com.shiggsy365.bingetvredux.stremio.Http;
 import com.shiggsy365.bingetvredux.stremio.Subtitles;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.zip.GZIPInputStream;
 
 /**
@@ -45,7 +42,7 @@ final class SubtitleDriver implements Player.Listener {
 
     private final SubtitleView mView;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
+    private final Background.Tasks mExecutor = new Background.Tasks(1);
     private ExoPlayer mPlayer;
     private long mOffsetMs;
     // The addon subtitles being drawn (null: the video's own, or none), and their cues.
@@ -180,22 +177,16 @@ final class SubtitleDriver implements Player.Listener {
     }
 
     private static byte[] download(String url) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-        try {
-            conn.setConnectTimeout(15_000);
-            conn.setReadTimeout(20_000);
-            conn.setInstanceFollowRedirects(true);
-            InputStream in = conn.getInputStream();
-            if ("gzip".equalsIgnoreCase(conn.getContentEncoding()) || url.endsWith(".gz")) in = new GZIPInputStream(in);
-            try (InputStream input = in) {
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                byte[] buffer = new byte[16 * 1024];
-                int n;
-                while ((n = input.read(buffer)) != -1) out.write(buffer, 0, n);
-                return out.toByteArray();
-            }
-        } finally {
-            conn.disconnect();
+        Http.Response r = Http.get(url).timeouts(15_000, 20_000).send();
+        if (!r.ok()) throw new java.io.IOException("HTTP " + r.status);
+        // A .gz file (not just a gzipped transfer) is unpacked here.
+        if (!url.endsWith(".gz")) return r.bytes;
+        try (InputStream in = new GZIPInputStream(new java.io.ByteArrayInputStream(r.bytes))) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buffer = new byte[16 * 1024];
+            int n;
+            while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
+            return out.toByteArray();
         }
     }
 }

@@ -16,8 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
@@ -149,7 +147,7 @@ final class AddonsApi {
         List<AddonStore.Addon> addons = new ArrayList<>();
         if (key.isEmpty()) addons.addAll(store().all());
         else addons.add(store().get(key));
-        ExecutorService pool = Executors.newFixedThreadPool(Math.max(1, Math.min(6, addons.size())));
+        Background.Tasks pool = new Background.Tasks(Math.max(1, Math.min(6, addons.size())));
         try {
             List<Future<Manifest>> results = new ArrayList<>();
             for (AddonStore.Addon a : addons) {

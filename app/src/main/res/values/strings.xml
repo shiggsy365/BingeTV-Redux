@@ -15,4 +15,7 @@
 -->
 <resources>
     <string name="app_name">BingeTV Redux</string>
+    <!-- Up Next's button chips: the button in bold, then what it does. -->
+    <string name="up_next_play"><b>OK</b>  Play now</string>
+    <string name="up_next_keep"><b>Back</b>  Keep watching</string>
 </resources>

@@ -18,61 +18,87 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- Over the video while its frame rate is measured and the TV changes mode (see
+         FrameRateMatcher), so the start isn't seen twice. -->
+    <FrameLayout
+        android:id="@+id/frame_rate_cover"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#FF000000"
+        android:visibility="gone">
+
+        <ProgressBar
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="center"
+            android:indeterminateTint="@color/guide_accent" />
+    </FrameLayout>
+
     <include layout="@layout/osd" />
 
     <include layout="@layout/subtitle_offset" />
 
-    <!-- Up Next: the next episode, near the end of this one. -->
+    <!-- Up Next: the next episode, near the end of this one, small at the top right, with
+         the remote's buttons as chips. -->
     <LinearLayout
         android:id="@+id/up_next"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
-        android:layout_margin="48dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="32dp"
+        android:layout_marginEnd="40dp"
         android:background="@drawable/up_next_card"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:padding="14dp"
+        android:padding="8dp"
         android:visibility="gone">
 
         <ImageView
             android:id="@+id/up_next_image"
-            android:layout_width="192dp"
-            android:layout_height="108dp"
+            android:layout_width="112dp"
+            android:layout_height="63dp"
             android:background="@drawable/card_placeholder"
             android:scaleType="centerCrop"
             android:importantForAccessibility="no" />
 
         <LinearLayout
-            android:layout_width="300dp"
+            android:layout_width="200dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
+            android:layout_marginStart="10dp"
             android:orientation="vertical">
 
             <TextView
+                android:id="@+id/up_next_countdown"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Up next"
+                android:fontFamily="sans-serif-medium"
                 android:textColor="@color/guide_accent"
-                android:textSize="14sp"
-                android:fontFamily="sans-serif-medium" />
+                android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/up_next_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:maxLines="2"
                 android:ellipsize="end"
+                android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="17sp" />
-
-            <TextView
-                android:id="@+id/up_next_countdown"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textColor="#B3FFFFFF"
                 android:textSize="13sp" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    style="@style/UpNextChip"
+                    android:text="@string/up_next_play" />
+
+                <TextView
+                    style="@style/UpNextChip"
+                    android:layout_marginStart="6dp"
+                    android:text="@string/up_next_keep" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

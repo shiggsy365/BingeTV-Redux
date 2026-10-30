@@ -1,0 +1,8 @@
+# The FFmpeg audio decoder's native code calls back into its Java classes and Media3's decoder
+# buffers by name, which R8 can't see: keep them whole.
+-keep class io.github.anilbeesetti.nextlib.** { *; }
+-keep class androidx.media3.decoder.** { *; }
+
+# Stack traces in logcat stay readable.
+-keepattributes SourceFile,LineNumberTable
+-dontobfuscate

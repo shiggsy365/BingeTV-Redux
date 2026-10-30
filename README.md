@@ -18,8 +18,10 @@ Stremio addons you add.
 
 1. On the Fire TV or Android TV, allow apps from unknown sources (on a Fire TV, for the app you'll
    download with, such as Downloader).
-2. Download `BingeTV-Redux-<version>.apk` from the
-   [latest release](https://github.com/shiggsy365/BingeTV-Redux/releases/latest) and install it.
+2. Download an APK from the
+   [latest release](https://github.com/shiggsy365/BingeTV-Redux/releases/latest) and install it:
+   `BingeTV-Redux-<version>-armeabi-v7a.apk` suits Fire TV Sticks and most TVs (the smallest),
+   `…-arm64-v8a.apk` 64-bit devices, and `BingeTV-Redux-<version>.apk` any of them.
 3. Open BingeTV Redux and select the **logo** at the left of its menu bar: profiles along the top,
    settings below. Scan the QR code with your phone (or open the address it shows on any device on
    the same network). The QR code fills in the PIN for you; otherwise type the 4-digit PIN shown on

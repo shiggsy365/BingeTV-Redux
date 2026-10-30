@@ -8,6 +8,8 @@ import android.database.sqlite.SQLiteDatabase;
 import android.graphics.BitmapFactory;
 import android.util.Log;
 
+import com.shiggsy365.bingetvredux.stremio.Http;
+
 import org.json.JSONException;
 import org.xmlpull.v1.XmlPullParserException;
 
@@ -18,7 +20,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -349,16 +350,9 @@ public final class GuideSync {
                     data = readAll(in);
                 }
             } else {
-                HttpURLConnection connection =
-                        (HttpURLConnection) new URL(entry.logoUrl).openConnection();
-                connection.setConnectTimeout(LOGO_TIMEOUT_MS);
-                connection.setReadTimeout(LOGO_TIMEOUT_MS);
-                connection.setInstanceFollowRedirects(true);
-                try (InputStream in = connection.getInputStream()) {
-                    data = readAll(in);
-                } finally {
-                    connection.disconnect();
-                }
+                Http.Response r = Http.get(entry.logoUrl).timeout(LOGO_TIMEOUT_MS).send();
+                if (!r.ok()) throw new IOException("HTTP " + r.status);
+                data = r.bytes;
             }
         } catch (IOException e) {
             Log.w(TAG, "Could not get logo for " + entry.displayName + ": " + e.getMessage());

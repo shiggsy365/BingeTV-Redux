@@ -13,8 +13,6 @@ import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /** A YouTube trailer, full screen. It closes at the end; Back closes it sooner. */
 public class TrailerActivity extends Activity {
@@ -29,7 +27,7 @@ public class TrailerActivity extends Activity {
     private Youtube.Streams mStreams;
     private long mPosition;
     private boolean mVisible;
-    private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
+    private final Background.Tasks mExecutor = new Background.Tasks(1);
 
     public static void start(Context context, String trailer, String title) {
         String id = Youtube.videoId(trailer);

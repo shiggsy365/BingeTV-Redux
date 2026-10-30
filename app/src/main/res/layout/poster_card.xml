@@ -33,4 +33,15 @@
         android:layout_gravity="top|end"
         android:importantForAccessibility="no"
         android:visibility="gone" />
+
+    <!-- How far into it (a film, or a show's episode in progress): along the bottom. -->
+    <ProgressBar
+        android:id="@+id/card_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:layout_gravity="bottom"
+        android:max="1000"
+        android:progressDrawable="@drawable/guide_progress"
+        android:visibility="gone" />
 </FrameLayout>
