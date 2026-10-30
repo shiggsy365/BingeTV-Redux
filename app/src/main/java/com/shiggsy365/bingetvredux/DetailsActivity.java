@@ -98,6 +98,9 @@ public class DetailsActivity extends Activity {
     private List<MetaItem.Person> mPeople = new ArrayList<>();
     private List<MetaItem> mSimilarItems = new ArrayList<>();
     private final String mToday = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new Date());
+    // The episode last focused, while the focus is on it or has gone up to the buttons: Play,
+    // Start over and Watched act on it (and the header shows it). Null for the season/title.
+    private Video mPicked;
     // What Play plays, and from where.
     private Video mPlayVideo;
     private long mPlayFrom;
@@ -174,6 +177,18 @@ public class DetailsActivity extends Activity {
             });
         }
         mPlay.requestFocus();
+        // Down from the buttons goes to the season tabs (when there are any), not past them.
+        for (View button : new View[]{mPlay, mStreams, mStartOver, mWatched, mRemove, mWatchlist, mTrailer}) {
+            button.setNextFocusDownId(R.id.seasons);
+        }
+        // A picked episode stays picked going up through the tabs to the buttons; coming down
+        // onto the tabs, or anywhere else, it's the season (or title) again.
+        View actions = findViewById(R.id.actions);
+        getWindow().getDecorView().getViewTreeObserver().addOnGlobalFocusChangeListener((old, now) -> {
+            if (mPicked == null || now == null || within(now, mEpisodes) || within(now, actions)) return;
+            if (within(now, mSeasons) && old != null && within(old, mEpisodes)) return;
+            unpick();
+        });
 
         for (HorizontalGridView grid : new HorizontalGridView[]{mSeasons, mEpisodes, mCast, mSimilar}) {
             // The tabs only scroll once the focused one would go off screen.
@@ -384,8 +399,14 @@ public class DetailsActivity extends Activity {
             return;
         }
         WatchStore.Row resume = store.resumeFor(mItem.id);
-        if (resume != null) mPlayVideo = mItem.video(resume.entry.videoId);
-        if (mPlayVideo != null) {
+        Video resumed = resume != null ? mItem.video(resume.entry.videoId) : null;
+        if (mPicked != null) {
+            // The episode picked in the row, resumed if it's part-watched.
+            mPlayVideo = mPicked;
+            WatchStore.Row row = store.row(mPicked.id);
+            if (row != null && row.positionMs > 0 && !row.watched) mPlayFrom = row.positionMs;
+        } else if (resumed != null) {
+            mPlayVideo = resumed;
             mPlayFrom = resume.positionMs;
         } else {
             mPlayVideo = nextUnwatched(store.watchedEpisodes(mItem.id));
@@ -526,11 +547,16 @@ public class DetailsActivity extends Activity {
     }
 
     private boolean isWatched() {
+        if (mPicked != null) {
+            return WatchStore.get(this).watchedEpisodes(mItem.id)
+                    .contains(mPicked.season + ":" + mPicked.episode);
+        }
         return mItem.hasSeasons() ? seasonWatched(mSeason) : WatchStore.get(this).isWatched(mItem.id);
     }
 
     private String watchedLabel() {
-        String what = mItem.hasSeasons() ? " " + seasonName(mSeason).toLowerCase(Locale.ROOT) : "";
+        String what = mPicked != null ? " " + episodeCode(mPicked)
+                : mItem.hasSeasons() ? " " + seasonName(mSeason).toLowerCase(Locale.ROOT) : "";
         return (isWatched() ? "Mark" + what + " unwatched" : "Mark" + what + " watched");
     }
 
@@ -546,7 +572,9 @@ public class DetailsActivity extends Activity {
         WatchStore store = WatchStore.get(this);
         List<WatchStore.Entry> entries = new ArrayList<>();
         boolean watched = !isWatched();
-        if (mItem.hasSeasons()) {
+        if (mPicked != null) {
+            entries.add(new Playback(mItem, mPicked, 0, "").entry(null));
+        } else if (mItem.hasSeasons()) {
             for (Video v : mSeasonEpisodes) {
                 if (v.isReleased(mToday)) entries.add(new Playback(mItem, v, 0, "").entry(null));
             }
@@ -590,6 +618,28 @@ public class DetailsActivity extends Activity {
 
     // ---- Seasons and episodes ----
 
+    private static boolean within(View view, View group) {
+        for (View v = view; v != null; v = v.getParent() instanceof View ? (View) v.getParent() : null) {
+            if (v == group) return true;
+        }
+        return false;
+    }
+
+    private void pick(Video v) {
+        if (v == mPicked) return;
+        mPicked = v;
+        updatePlay();
+        updateWatched();
+    }
+
+    private void unpick() {
+        if (mPicked == null) return;
+        mPicked = null;
+        showItemDetails();
+        updatePlay();
+        updateWatched();
+    }
+
     private void showSeason(int season) {
         mSeason = season;
         mSeasonEpisodes = mItem.episodes(season);
@@ -597,6 +647,8 @@ public class DetailsActivity extends Activity {
         if (mPlayVideo != null && mPlayVideo.season == season) {
             mEpisodes.setSelectedPosition(Math.max(0, mSeasonEpisodes.indexOf(mPlayVideo)));
         }
+        // Down from the buttons lands on this season's tab, not the first one.
+        if (!mSeasons.hasFocus()) mSeasons.setSelectedPosition(Math.max(0, mSeasonNumbers.indexOf(season)));
         restyleTabs();
         updateWatched();
     }
@@ -646,6 +698,8 @@ public class DetailsActivity extends Activity {
                 else styleTab(tab, season);
             });
             tab.setOnClickListener(v -> mEpisodes.requestFocus());
+            // Up always lands on Play, not whichever button happens to be above the tab.
+            tab.setNextFocusUpId(R.id.play);
         }
 
         @Override
@@ -698,13 +752,16 @@ public class DetailsActivity extends Activity {
             card.setOnFocusChangeListener((c, focused) -> {
                 if (focused) {
                     showEpisodeDetails(v, row);
+                    pick(v);
                 } else {
                     // Once the focus has settled: still on an episode, it has set the header.
                     c.post(() -> {
-                        if (!isDestroyed() && !mEpisodes.hasFocus()) showItemDetails();
+                        if (!isDestroyed() && !mEpisodes.hasFocus() && mPicked == null) showItemDetails();
                     });
                 }
             });
+            // Up goes to the season tabs (when there are any), then the buttons.
+            card.setNextFocusUpId(R.id.seasons);
         }
 
         @Override

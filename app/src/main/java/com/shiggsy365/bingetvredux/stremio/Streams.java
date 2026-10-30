@@ -23,6 +23,8 @@ public final class Streams {
         public int sort = SORT_QUALITY;
         /** Lines, e.g. 1080; 0 for no limit. */
         public int maxResolution;
+        /** Bytes; 0 for no limit. Streams of unknown size are kept. */
+        public long maxSize;
         public boolean hideCam = true;
         /** Lower-case keywords: streams mentioning any are hidden. */
         public List<String> exclude = new ArrayList<>();
@@ -86,6 +88,7 @@ public final class Streams {
         Stream.Quality q = s.quality;
         if (prefs.hideCam && q.cam) return false;
         if (prefs.maxResolution > 0 && q.resolution > prefs.maxResolution) return false;
+        if (prefs.maxSize > 0 && q.size > prefs.maxSize) return false;
         String text = s.text().toLowerCase(Locale.ROOT);
         for (String keyword : prefs.exclude) if (text.contains(keyword)) return false;
         return true;

@@ -50,7 +50,7 @@ final class HomeRows {
         if (Settings.bool(app, Settings.ROW_WATCHLIST) && Mdblist.enabled(app)) {
             rows.add(new CatalogRows.Row("Watchlist", () -> withMetas(app, Mdblist.watchlist(app, false))));
         }
-        if (Settings.bool(app, Settings.ROW_ON_NOW)) {
+        if (Settings.bool(app, Settings.ROW_ON_NOW) && Settings.bool(app, Settings.LIVE_TV)) {
             rows.add(new CatalogRows.Row("On Now", () -> onNow(app)));
         }
         return rows;
@@ -183,7 +183,9 @@ final class HomeRows {
         return null;
     }
 
-    /** Live channels with what's on, from every group. */
+    /** Live channels with what's on, from every group: the logo as a square tile, and a mini
+     *  guide (what's on now and next) above the current program's description, and the
+     *  program's own picture, when the guide has one, as the backdrop. */
     private static List<MetaItem> onNow(Context context) throws JSONException {
         List<MetaItem> out = new ArrayList<>();
         List<GuideData.Group> groups = GuideData.load(context);
@@ -191,13 +193,17 @@ final class HomeRows {
         for (GuideData.Channel c : groups.get(0).channels) {
             if (c.now == null) continue;
             File logo = GuideStore.logoFile(context, (int) c.id);
+            String logoUri = logo.exists() ? Uri.fromFile(logo).toString() : "";
             JSONObject data = new JSONObject()
                     .put("id", LIVE_PREFIX + c.id).put("type", "tv").put("name", c.name)
-                    .put("poster", logo.exists() ? Uri.fromFile(logo).toString() : "")
-                    .put("posterShape", "landscape")
-                    .put("description", c.now.title);
+                    .put("poster", logoUri).put("logo", logoUri)
+                    .put("background", c.now.image == null ? "" : c.now.image)
+                    .put("posterShape", "square")
+                    .put("description", c.now.description);
+            String guide = "On Now – " + c.now.title
+                    + (c.next != null ? "\nOn Next – " + c.next.title : "");
             MetaItem item = MetaItem.preview(data, null);
-            if (item != null) out.add(item);
+            if (item != null) out.add(item.forRow(guide, c.now.description));
             if (out.size() >= ON_NOW_LIMIT) break;
         }
         return out;

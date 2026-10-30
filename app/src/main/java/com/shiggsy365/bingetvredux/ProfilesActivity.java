@@ -24,6 +24,7 @@ public class ProfilesActivity extends Activity {
         setContentView(R.layout.profiles_activity);
         mProfiles = Profiles.all(this);
         HorizontalGridView grid = findViewById(R.id.profiles);
+        ProfileCarousel.setUp(grid);
         grid.setAdapter(new ProfileAdapter());
         String current = Profiles.current(this).id;
         for (int i = 0; i < mProfiles.size(); i++) {
@@ -49,10 +50,8 @@ public class ProfilesActivity extends Activity {
                 Profiles.setCurrent(ProfilesActivity.this, p.id);
                 finish();
             });
-            avatar.setOnFocusChangeListener((v, focused) -> {
-                float scale = focused ? 1.08f : 1f;
-                v.animate().scaleX(scale).scaleY(scale).setDuration(120).start();
-            });
+            ProfileCarousel.style(holder.itemView, avatar.hasFocus(), false);
+            avatar.setOnFocusChangeListener((v, focused) -> ProfileCarousel.style(holder.itemView, focused, true));
         }
 
         @Override

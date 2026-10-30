@@ -303,6 +303,7 @@ public final class GuideSync {
                 values.put("end_ms", end);
                 values.put("title", p.title);
                 values.put("description", p.description);
+                values.put("image", p.iconUrl);
                 db.insert(GuideStore.PROGRAMS, null, values);
             }
             return;

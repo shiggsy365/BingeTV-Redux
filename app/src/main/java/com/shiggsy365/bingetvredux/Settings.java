@@ -20,7 +20,16 @@ import java.util.Map;
  */
 public final class Settings {
     public static final String SORT = "sort";
+    /** Films' highest resolution (the one setting before episodes had their own). */
     public static final String MAX_RESOLUTION = "maxResolution";
+    public static final String MAX_RESOLUTION_EPISODES = "maxResolutionEpisodes";
+    /** Largest file in GB (0: any), for films and for episodes. */
+    public static final String MAX_SIZE = "maxSizeGb";
+    public static final String MAX_SIZE_EPISODES = "maxSizeEpisodesGb";
+    /** Up Next appears this many seconds before the end of episodes under 30 minutes, 30–60, and longer. */
+    public static final String UP_NEXT_SHORT = "upNextShort";
+    public static final String UP_NEXT_MEDIUM = "upNextMedium";
+    public static final String UP_NEXT_LONG = "upNextLong";
     public static final String HIDE_CAM = "hideCam";
     public static final String EXCLUDE = "exclude";
     /** What Play does: "auto" plays the best stream, "choose" lists them. */
@@ -41,6 +50,8 @@ public final class Settings {
     public static final String ROW_NEXT_UP = "rowNextUp";
     /** Continue Watching also lists the next episode of shows being watched (one row, as BingeTV). */
     public static final String CONTINUE_WITH_NEXT_UP = "continueWithNextUp";
+    /** Live TV on the menu bar and Home (off: films and series only). */
+    public static final String LIVE_TV = "liveTv";
     public static final String ROW_WATCHLIST = "rowWatchlist";
     public static final String ROW_ON_NOW = "rowOnNow";
 
@@ -50,6 +61,12 @@ public final class Settings {
     static {
         DEFAULTS.put(SORT, Streams.SORT_QUALITY);
         DEFAULTS.put(MAX_RESOLUTION, 0);
+        DEFAULTS.put(MAX_RESOLUTION_EPISODES, 0);
+        DEFAULTS.put(MAX_SIZE, 0);
+        DEFAULTS.put(MAX_SIZE_EPISODES, 0);
+        DEFAULTS.put(UP_NEXT_SHORT, 30);
+        DEFAULTS.put(UP_NEXT_MEDIUM, 45);
+        DEFAULTS.put(UP_NEXT_LONG, 60);
         DEFAULTS.put(HIDE_CAM, true);
         DEFAULTS.put(EXCLUDE, "");
         DEFAULTS.put(PLAY_BUTTON, "auto");
@@ -67,6 +84,7 @@ public final class Settings {
         DEFAULTS.put(ROW_CONTINUE, true);
         DEFAULTS.put(ROW_NEXT_UP, true);
         DEFAULTS.put(CONTINUE_WITH_NEXT_UP, true);
+        DEFAULTS.put(LIVE_TV, true);
         DEFAULTS.put(ROW_WATCHLIST, true);
         DEFAULTS.put(ROW_ON_NOW, false);
     }
@@ -111,13 +129,22 @@ public final class Settings {
         prefs(context).edit().putString(key, value).apply();
     }
 
-    public static Streams.Prefs streamPrefs(Context context) {
+    /** The profile's stream order and filters, for a film or an episode. */
+    public static Streams.Prefs streamPrefs(Context context, boolean episode) {
         Streams.Prefs p = new Streams.Prefs();
         p.sort = integer(context, SORT);
-        p.maxResolution = integer(context, MAX_RESOLUTION);
+        p.maxResolution = integer(context, episode ? MAX_RESOLUTION_EPISODES : MAX_RESOLUTION);
+        p.maxSize = integer(context, episode ? MAX_SIZE_EPISODES : MAX_SIZE) * 1_000_000_000L;
         p.hideCam = bool(context, HIDE_CAM);
         p.exclude = Streams.Prefs.parseKeywords(string(context, EXCLUDE));
         return p;
+    }
+
+    /** How long before the end of an episode Up Next appears, for its length. */
+    public static long upNextBeforeEndMs(Context context, long durationMs) {
+        String key = durationMs < 30 * 60_000L ? UP_NEXT_SHORT
+                : durationMs <= 60 * 60_000L ? UP_NEXT_MEDIUM : UP_NEXT_LONG;
+        return integer(context, key) * 1000L;
     }
 
     /**

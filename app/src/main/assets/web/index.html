@@ -25,11 +25,40 @@
   header h1 { font-size: 18px; margin: 0; flex: 1; line-height: 0; }
   header .logo { height: 40px; width: auto; }
   @media (prefers-color-scheme: light) { header { background: #15171c; color: #ececf2; } }
-  nav { display: flex; gap: 4px; padding: 8px 16px 0; }
-  nav button { background: none; border: none; border-bottom: 2px solid transparent;
-               color: var(--muted); padding: 8px 12px; font-size: 15px; cursor: pointer; }
-  nav button.active { color: var(--text); border-color: var(--accent); }
-  main { padding: 16px; }
+  /* A sidebar of grouped sections; on a phone, one scrolling row. */
+  .shell { display: grid; grid-template-columns: 230px 1fr; min-height: calc(100vh - 64px); }
+  nav { border-right: 1px solid var(--line); padding: 14px 10px; position: sticky; top: 64px;
+        align-self: start; max-height: calc(100vh - 64px); overflow-y: auto; }
+  .navgroup { margin-bottom: 16px; }
+  .navgroup h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+                 margin: 0 8px 6px; font-weight: 600; }
+  nav button[data-tab] { display: block; width: 100%; text-align: left; background: none; border: none;
+               border-left: 3px solid transparent; border-radius: 0 6px 6px 0; color: var(--text);
+               padding: 7px 10px; font-size: 14px; cursor: pointer; }
+  nav button[data-tab]:hover { background: var(--chip); }
+  nav button[data-tab].active { border-left-color: var(--accent); background: var(--chip); font-weight: 600; }
+  .navsync { margin: 8px 8px 0; display: grid; gap: 6px; }
+  .navsync .muted { font-size: 12px; }
+  main { padding: 18px; max-width: 1100px; min-width: 0; }
+  .page-title { font-size: 22px; margin: 2px 0 4px; }
+  .page-title .muted { font-size: 16px; font-weight: 400; }
+  .page-sub { margin: 0 0 14px; }
+  .profile-settings .page-title { margin-bottom: 14px; }
+  .profile-switch { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .profile-switch span { font-size: 13px; opacity: .8; }
+  .profile-switch select { width: auto; min-width: 180px; background: #262833; color: #fff;
+                           border-color: #3a3c48; }
+  @media (max-width: 800px) {
+    .shell { grid-template-columns: 1fr; }
+    nav { position: static; max-height: none; border-right: none; border-bottom: 1px solid var(--line);
+          display: flex; gap: 4px; overflow-x: auto; padding: 8px; }
+    .navgroup { display: flex; gap: 4px; margin: 0; align-items: center; }
+    .navgroup h3, .navsync .muted { display: none; }
+    .navsync { margin: 0; display: block; }
+    nav button[data-tab] { white-space: nowrap; border-left: none; border-bottom: 3px solid transparent;
+                           border-radius: 6px 6px 0 0; }
+    nav button[data-tab].active { border-bottom-color: var(--accent); }
+  }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
            padding: 14px; margin-bottom: 16px; }
   .panel h2 { font-size: 16px; margin: 0 0 10px; }
@@ -104,7 +133,8 @@
            background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px;
            opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100vw - 32px); }
   #toast.show { opacity: 1; }
-  .addon { border-top: 1px solid var(--line); padding: 12px 0; display: grid; gap: 8px; }
+  .addon { border-top: 1px solid var(--line); padding: 12px 0; display: grid; gap: 8px;
+           grid-template-columns: minmax(0, 1fr); }
   .addon:first-child { border-top: 0; }
   .addon.off > :not(:last-child) { opacity: .55; }
   .addonlogo { width: 40px; height: 40px; border-radius: 8px; object-fit: contain; flex: none;
@@ -157,27 +187,44 @@
 </div>
 <header>
   <h1><img src="/logo.png" alt="BingeTV Redux" class="logo"></h1>
-  <span class="muted" id="syncStatus"></span>
-  <button class="btn primary" id="syncBtn">Sync</button>
+  <label class="profile-switch" title="Whose addons, catalogs and settings you're changing">
+    <span>Profile</span><select id="profilePick"></select>
+  </label>
 </header>
 <div id="offline" role="status">Can't reach the Fire Stick. It may be asleep or its Wi-Fi
   signal may be weak. Press a button on the remote; this page reconnects by itself.</div>
-<nav>
-  <button data-tab="addons" class="active">Addons</button>
-  <button data-tab="catalogs">Catalogs</button>
-  <button data-tab="profiles">Profiles</button>
-  <button data-tab="groups">Groups &amp; channels</button>
-  <button data-tab="logos">Logos</button>
-  <button data-tab="guides">Guides</button>
-  <button data-tab="settings">Settings</button>
+<div class="shell">
+<nav aria-label="Sections">
+  <div class="navgroup">
+    <h3>This profile</h3>
+    <button data-tab="addons" class="active">Addons</button>
+    <button data-tab="catalogs">Catalogs &amp; hubs</button>
+    <button data-tab="playback">Playback &amp; languages</button>
+    <button data-tab="home">Home &amp; trailers</button>
+    <button data-tab="mdblist">MDBList</button>
+  </div>
+  <div class="navgroup">
+    <h3>Everyone</h3>
+    <button data-tab="profiles">Profiles</button>
+  </div>
+  <div class="navgroup">
+    <h3>Live TV</h3>
+    <button data-tab="accounts">Accounts</button>
+    <button data-tab="groups">Groups &amp; channels</button>
+    <button data-tab="logos">Logos</button>
+    <button data-tab="guides">Guides</button>
+    <div class="navsync"><span class="muted" id="syncStatus"></span>
+      <button class="btn primary" id="syncBtn">Sync live TV now</button></div>
+  </div>
+  <div class="navgroup">
+    <h3>App</h3>
+    <button data-tab="backup">Backup &amp; restore</button>
+  </div>
 </nav>
 <main>
   <section id="tab-addons">
-    <div class="row panel profile-pick">
-      <span>Addons and catalogs of</span>
-      <select class="addon-profile" style="width:auto"></select>
-      <span class="muted grow">Each profile has its own; a new profile starts with a copy of the one in use on the TV.</span>
-    </div>
+    <h2 class="page-title">Addons <span class="muted">· <span data-profile-name></span></span></h2>
+    <p class="muted page-sub">Streams, subtitles and details come from these, asked in this order.</p>
     <div class="panel">
       <h2>Add an addon</h2>
       <p class="muted">Paste the addon's manifest URL (ending in manifest.json) or its
@@ -200,11 +247,8 @@
   </section>
 
   <section id="tab-catalogs" hidden>
-    <div class="row panel profile-pick">
-      <span>Addons and catalogs of</span>
-      <select class="addon-profile" style="width:auto"></select>
-      <span class="muted grow">Each profile has its own; a new profile starts with a copy of the one in use on the TV.</span>
-    </div>
+    <h2 class="page-title">Catalogs &amp; hubs <span class="muted">· <span data-profile-name></span></span></h2>
+    <p class="muted page-sub">Which catalogs show where on the TV, and which ones Search uses.</p>
     <div class="panel">
       <h2>Hubs</h2>
       <p class="muted">Each hub is a page on the TV's menu bar, with a row for each catalog
@@ -233,20 +277,34 @@
   </section>
 
   <section id="tab-profiles" hidden>
+    <h2 class="page-title">Profiles</h2>
     <div class="panel">
-      <h2>Profiles</h2>
-      <p class="muted">Each profile has its own watch history, settings and MDBList account.
-        With more than one, the TV asks who's watching when the app starts.</p>
+      <p class="muted">Each person gets their own picture, watch history, addons and catalogs,
+        settings and MDBList account; live TV is shared. With more than one profile, the TV asks
+        who's watching when the app starts. Choose whose things you're changing with
+        <b>Profile</b> at the top of the page.</p>
       <div id="profileList"></div>
       <div class="row" style="margin-top:10px">
         <input type="text" id="profileNew" placeholder="Name">
         <button class="btn primary" id="profileAdd">Add a profile</button>
       </div>
     </div>
-    <div id="profileSettings"></div>
+  </section>
+
+  <section id="tab-playback" hidden>
+    <div class="profile-settings" data-page="playback"></div>
+  </section>
+
+  <section id="tab-home" hidden>
+    <div class="profile-settings" data-page="home"></div>
+  </section>
+
+  <section id="tab-mdblist" hidden>
+    <div class="profile-settings" data-page="mdblist"></div>
   </section>
 
   <section id="tab-groups" hidden>
+    <h2 class="page-title">Groups &amp; channels</h2>
     <div class="layout">
       <div>
         <div class="panel">
@@ -273,8 +331,8 @@
   </section>
 
   <section id="tab-logos" hidden>
+    <h2 class="page-title">Channel logos</h2>
     <div class="panel">
-      <h2>Logos</h2>
       <p class="muted">Drag an image onto a channel, or tap its logo to choose a file. M3U uses the
         panel's logo; EPG uses the logo from the channel's linked guide. Sync to update the TV.</p>
       <div class="toolbar">
@@ -292,6 +350,7 @@
   </section>
 
   <section id="tab-guides" hidden>
+    <h2 class="page-title">TV guides</h2>
     <div class="panel">
       <h2>Guide sources</h2>
       <p class="muted">Channels use the panel's guide by default. Add XMLTV guides (.xml or .xml.gz)
@@ -306,7 +365,9 @@
     </div>
   </section>
 
-  <section id="tab-settings" hidden>
+  <section id="tab-accounts" hidden>
+    <h2 class="page-title">Live TV accounts</h2>
+    <p class="muted page-sub">Shared by every profile.</p>
     <div class="panel">
       <h2>Xtream account</h2>
       <label class="field"><span>Name</span><input type="text" id="setName" placeholder="Main"></label>
@@ -338,15 +399,12 @@
       <label class="field"><span>Remove prefixes</span><input type="text" id="setPrefixes" placeholder="UK:, UK|, |UK|"></label>
       <label class="field"><span>Remove suffixes</span><input type="text" id="setSuffixes" placeholder="HD, FHD, ᴴᴰ, ᴿᴬᵂ"></label>
     </div>
-    <button class="btn primary" id="saveSettings">Save settings</button>
+    <button class="btn primary" id="saveSettings">Save live TV settings</button>
+  </section>
 
-    <div class="panel" style="margin-top:16px">
-      <h2>This browser</h2>
-      <label class="row"><input type="checkbox" id="prefMergeUpConfirm"> Ask before "Merge up"</label>
-    </div>
-
-    <div class="panel" style="margin-top:16px">
-      <h2>Backup &amp; restore</h2>
+  <section id="tab-backup" hidden>
+    <h2 class="page-title">Backup &amp; restore</h2>
+    <div class="panel">
       <p class="muted">A backup holds everything set up here: your addons and catalogs, profiles
         with their settings and watch history, the Xtream accounts, groups, channel edits, guides
         and logos. Restore it here or on another device running BingeTV Redux. A FyrTuner backup
@@ -362,8 +420,13 @@
         <button class="btn danger" id="restoreBackup">Restore</button>
       </div>
     </div>
+    <div class="panel">
+      <h2>This browser</h2>
+      <label class="row"><input type="checkbox" id="prefMergeUpConfirm"> Ask before "Merge up"</label>
+    </div>
   </section>
 </main>
+</div>
 
 <dialog id="linkDialog">
   <h2 style="margin-top:0;font-size:16px">Link guide for <span id="linkFor"></span></h2>
@@ -448,24 +511,29 @@ function setOffline(value) {
 // The profile whose addons and catalogs the Addons and Catalogs tabs show (null: the TV's).
 let addonProfile = null;
 
-/** Fills the tabs' profile pickers; the profile in use on the TV until another is picked. */
+/**
+ * Fills the profile picker at the top: whose addons, catalogs and settings the page shows
+ * (the profile in use on the TV until another is picked).
+ */
 async function loadAddonProfiles() {
   const saved = addonProfile;
   addonProfile = null;
   const data = await api('/api/profiles');
   const ids = data.profiles.map(p => p.id);
   addonProfile = ids.includes(saved) ? saved : (data.profiles.find(p => p.current) || data.profiles[0]).id;
-  const options = data.profiles.map(p => `<option value="${esc(p.id)}">${esc(p.name)}${p.current ? ' (on the TV)' : ''}</option>`).join('');
-  document.querySelectorAll('.addon-profile').forEach(el => {
-    el.innerHTML = options;
-    el.value = addonProfile;
-    el.onchange = () => run(async () => {
-      addonProfile = el.value;
-      document.querySelectorAll('.addon-profile').forEach(other => { other.value = addonProfile; });
-      await loadAddons();
-      await loadCatalogs();
-    });
-  });
+  settingsProfile = addonProfile;
+  const pick = $('profilePick');
+  pick.innerHTML = data.profiles.map(p =>
+      `<option value="${esc(p.id)}">${esc(p.name)}${p.current ? ' (on the TV)' : ''}</option>`).join('');
+  pick.value = addonProfile;
+  const name = data.profiles.find(p => p.id === addonProfile).name;
+  document.querySelectorAll('[data-profile-name]').forEach(el => { el.textContent = name; });
+  pick.onchange = () => {
+    addonProfile = settingsProfile = pick.value;
+    const picked = data.profiles.find(p => p.id === addonProfile).name;
+    document.querySelectorAll('[data-profile-name]').forEach(el => { el.textContent = picked; });
+    openTab(currentTab);
+  };
 }
 
 async function api(path, body) {
@@ -524,15 +592,23 @@ async function run(fn) {
   try { await fn(); } catch (e) { if (!(e instanceof OfflineError)) toast(e.message); }
 }
 
-document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
-  ['addons', 'catalogs', 'profiles', 'groups', 'logos', 'guides', 'settings'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
-  if (b.dataset.tab === 'profiles') run(loadProfiles);
-  if (b.dataset.tab === 'addons') run(async () => { await loadAddonProfiles(); await loadAddons(); });
-  if (b.dataset.tab === 'catalogs') run(async () => { await loadAddonProfiles(); await loadCatalogs(); });
-  if (b.dataset.tab === 'logos') openLogos();
-  if (b.dataset.tab === 'settings') $('prefMergeUpConfirm').checked = !pref('skipMergeUpConfirm');
-});
+const TABS = ['addons', 'catalogs', 'playback', 'home', 'mdblist', 'profiles', 'accounts', 'groups',
+  'logos', 'guides', 'backup'];
+let currentTab = 'addons';
+
+/** Shows a section and loads what it needs (for the profile picked at the top). */
+function openTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('nav button[data-tab]').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
+  TABS.forEach(t => $('tab-' + t).hidden = t !== tab);
+  try { localStorage.setItem('tab', tab); } catch (e) { /* not kept */ }
+  if (tab === 'addons') run(loadAddons);
+  if (tab === 'catalogs') run(loadCatalogs);
+  if (['playback', 'home', 'mdblist', 'profiles'].includes(tab)) run(loadProfiles);
+  if (tab === 'logos') openLogos();
+  if (tab === 'backup') $('prefMergeUpConfirm').checked = !pref('skipMergeUpConfirm');
+}
+document.querySelectorAll('nav button[data-tab]').forEach(b => b.onclick = () => openTab(b.dataset.tab));
 $('prefMergeUpConfirm').onchange = e => setPref('skipMergeUpConfirm', !e.target.checked);
 
 function applyState(s) {
@@ -1250,7 +1326,7 @@ $('srcSave').onclick = () => run(async () => {
 
 function renderSettings() {
   const s = state.settings;
-  if (document.activeElement && document.activeElement.closest('#tab-settings')) return;
+  if (document.activeElement && document.activeElement.closest('#tab-accounts')) return;
   $('setName').value = s.name; $('setServer').value = s.server; $('setUser').value = s.username; $('setPass').value = '';
   $('setPass').placeholder = s.hasPassword ? 'Unchanged' : 'Password';
   $('setHls').checked = s.useHls; $('setPrefixes').value = s.prefixes; $('setSuffixes').value = s.suffixes;
@@ -1299,7 +1375,12 @@ function start() {
   initCatalogs();
   initProfiles();
   run(async () => applyState(await api('/api/state')));
-  run(async () => { await loadAddonProfiles(); await loadAddons(); });
+  run(async () => {
+    await loadAddonProfiles();
+    let tab = 'addons';
+    try { tab = localStorage.getItem('tab') || 'addons'; } catch (e) { /* not kept */ }
+    openTab(TABS.includes(tab) ? tab : 'addons');
+  });
 }
 // The TV's QR code opens the page with the PIN in the address: pair with it, then drop it
 // from the address so it isn't kept in the browser's history.

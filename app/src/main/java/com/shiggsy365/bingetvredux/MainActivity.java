@@ -85,6 +85,7 @@ public class MainActivity extends Activity {
         List<Profiles.Profile> profiles = Profiles.all(this);
         String current = Profiles.current(this).id;
         HorizontalGridView grid = findViewById(R.id.profiles);
+        ProfileCarousel.setUp(grid);
         grid.setAdapter(new RecyclerView.Adapter<RecyclerView.ViewHolder>() {
             @NonNull
             @Override
@@ -106,10 +107,8 @@ public class MainActivity extends Activity {
                     if (!isCurrent) Profiles.setCurrent(MainActivity.this, p.id);
                     finish();
                 });
-                avatar.setOnFocusChangeListener((v, focused) -> {
-                    float scale = focused ? 1.08f : 1f;
-                    v.animate().scaleX(scale).scaleY(scale).setDuration(120).start();
-                });
+                ProfileCarousel.style(holder.itemView, avatar.hasFocus(), false);
+                avatar.setOnFocusChangeListener((v, focused) -> ProfileCarousel.style(holder.itemView, focused, true));
             }
 
             @Override
@@ -120,15 +119,6 @@ public class MainActivity extends Activity {
         for (int i = 0; i < profiles.size(); i++) {
             if (profiles.get(i).id.equals(current)) grid.setSelectedPosition(i);
         }
-        // Centred while they fit across the screen (a tile is 160dp, with a 24dp gap).
-        float dp = getResources().getDisplayMetrics().density;
-        int row = Math.round(profiles.size() * 184 * dp - 24 * dp);
-        int screen = getResources().getDisplayMetrics().widthPixels;
-        int side = Math.max(Math.round(24 * dp), (screen - row) / 2);
-        ViewGroup.LayoutParams lp = grid.getLayoutParams();
-        lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-        grid.setLayoutParams(lp);
-        grid.setPadding(side, grid.getPaddingTop(), side, grid.getPaddingBottom());
         grid.requestFocus();
     }
 

@@ -35,12 +35,15 @@ public final class GuideData {
     public static class Program {
         public final String title;
         public final String description;
+        /** The guide's picture of the programme; null when it has none. */
+        public final String image;
         public final long startMs;
         public final long endMs;
 
-        Program(String title, String description, long startMs, long endMs) {
+        Program(String title, String description, String image, long startMs, long endMs) {
             this.title = title;
             this.description = description;
+            this.image = image;
             this.startMs = startMs;
             this.endMs = endMs;
         }
@@ -205,15 +208,15 @@ public final class GuideData {
         channel.next = null;
         List<Program> programs = new ArrayList<>();
         try (Cursor c = db.query(GuideStore.PROGRAMS,
-                new String[]{"title", "description", "start_ms", "end_ms"},
+                new String[]{"title", "description", "image", "start_ms", "end_ms"},
                 "stream_id = ? AND end_ms > ? AND start_ms < ?",
                 new String[]{String.valueOf(channel.streamId),
                         String.valueOf(now - Math.max(PAST_MS, channel.catchupDays() * DAY_MS)),
                         String.valueOf(now + FUTURE_MS)},
                 null, null, "start_ms")) {
             while (c.moveToNext()) {
-                Program p = new Program(c.getString(0), c.getString(1), c.getLong(2),
-                        c.getLong(3));
+                Program p = new Program(c.getString(0), c.getString(1), c.getString(2),
+                        c.getLong(3), c.getLong(4));
                 programs.add(p);
                 if (p.endMs <= now) continue;
                 if (channel.now == null && p.startMs <= now) {

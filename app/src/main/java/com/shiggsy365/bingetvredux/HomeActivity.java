@@ -46,6 +46,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     private LinearLayout mHeroFacts;
     private LinearLayout mHeroGenres;
     private TextView mHeroDesc;
+    private TextView mHeroSubtitle2;
     private TextView mEmpty;
     private VerticalGridView mRowsView;
     private CatalogRows mRows;
@@ -99,6 +100,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         mHeroFacts = findViewById(R.id.hero_facts);
         mHeroGenres = findViewById(R.id.hero_genres);
         mHeroDesc = findViewById(R.id.hero_desc);
+        mHeroSubtitle2 = findViewById(R.id.hero_subtitle2);
         mEmpty = findViewById(R.id.empty);
         mRowsView = findViewById(R.id.rows);
         mRows = new CatalogRows(this, mRowsView, this);
@@ -193,7 +195,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         for (AddonStore.HubInfo hub : store.hubsInUse()) {
             if (!AddonStore.HOME.equals(hub.id)) addMenuItem(hub.id, hub.name, hubIconPath(hub.id, hub.icon));
         }
-        addMenuItem(PAGE_LIVE, "Live TV", MenuIcons.LIVE);
+        if (Settings.bool(this, Settings.LIVE_TV)) addMenuItem(PAGE_LIVE, "Live TV", MenuIcons.LIVE);
         addMenuItem(PAGE_SEARCH, "Search", MenuIcons.SEARCH);
         // Profiles and settings are behind the logo (MainActivity).
         // A hub that's gone (no catalogs left) falls back to Home.
@@ -302,6 +304,11 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         mHeroItem = null;
         bindHero(null);
         mRows.setRows(pageRows(page));
+        // On the menu bar, the artwork comes from this page's rows (e.g. another profile's).
+        if (mMenuMode) {
+            Images.fade(mBackdropFull, null);
+            pickMenuArt(0);
+        }
     }
 
     private void updateEmpty() {
@@ -310,12 +317,12 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         if (!empty) return;
         if (Stremio.addons(this).all().isEmpty()) {
             mEmpty.setText("Add your Stremio addons to fill this page.\n\n"
-                    + "Open Settings for the web page's address and PIN, then use its Addons tab.");
+                    + "Select the logo at the top left for the web page's address and PIN, then use its Addons page.");
         } else if (!mRows.allLoaded()) {
             mEmpty.setText("Loading…");
         } else {
             mEmpty.setText("Nothing to show here.\n\n"
-                    + "Move catalogs into this hub on the web page's Catalogs tab.");
+                    + "Move catalogs into this hub on the web page's Catalogs & hubs page.");
         }
     }
 
@@ -352,8 +359,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         if (mMenuMode) {
             mHandler.removeCallbacks(mShowHero);
             mTrailer.show(null);
-            MetaItem pick = mRows.randomFirstItem();
-            if (pick != null) Images.fade(mBackdropFull, pick.background.isEmpty() ? pick.poster : pick.background);
+            pickMenuArt(0);
             mBackdrop.animate().alpha(0f).setDuration(ms).start();
             mHero.animate().alpha(0f).setDuration(ms).start();
             mBackdropDim.animate().alpha(0.7f).setDuration(ms).start();
@@ -365,6 +371,20 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
             MetaItem item = mPendingHero != null ? mPendingHero : mHeroItem;
             mHeroItem = null;
             bindHero(item);
+        }
+    }
+
+    /**
+     * While the menu bar has focus: a random title of the first row, full screen. The rows may
+     * still be loading (after a profile switch, say), so it tries again for a few seconds.
+     */
+    private void pickMenuArt(int attempt) {
+        if (!mMenuMode || isDestroyed()) return;
+        MetaItem pick = mRows.randomFirstItem();
+        if (pick != null) {
+            Images.fade(mBackdropFull, pick.background.isEmpty() ? pick.poster : pick.background);
+        } else if (attempt < 20) {
+            mHandler.postDelayed(() -> pickMenuArt(attempt + 1), 500);
         }
     }
 
@@ -383,20 +403,27 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
             Images.load(mHeroLogo, null);
             mHeroTitle.setText(null);
             mHeroSubtitle.setVisibility(View.GONE);
+            mHeroSubtitle2.setVisibility(View.GONE);
             InfoChips.fill(mHeroFacts, new ArrayList<>());
             InfoChips.fill(mHeroGenres, new ArrayList<>());
             mHeroDesc.setText(null);
             return;
         }
-        String art = item.background.isEmpty() ? item.poster : item.background;
+        // A channel's backdrop is its program's picture; its logo isn't backdrop material.
+        String art = !item.background.isEmpty() ? item.background
+                : item.id.startsWith(HomeRows.LIVE_PREFIX) ? null : item.poster;
         Images.fade(mBackdrop, art);
         Images.fadeSoft(mBackdropFull, art);
         mHeroTitle.setText(item.name);
         mHeroTitle.setVisibility(item.logo.isEmpty() ? View.VISIBLE : View.GONE);
         mHeroLogo.setVisibility(item.logo.isEmpty() ? View.GONE : View.VISIBLE);
         Images.fade(mHeroLogo, item.logo);
-        mHeroSubtitle.setText(item.subtitle);
-        mHeroSubtitle.setVisibility(item.subtitle.isEmpty() ? View.GONE : View.VISIBLE);
+        // A second line (a channel's "On Next") gets a line of its own, each cut short if long.
+        String[] lines = item.subtitle.split("\n", 2);
+        mHeroSubtitle.setText(lines[0]);
+        mHeroSubtitle.setVisibility(lines[0].isEmpty() ? View.GONE : View.VISIBLE);
+        mHeroSubtitle2.setText(lines.length > 1 ? lines[1] : null);
+        mHeroSubtitle2.setVisibility(lines.length > 1 ? View.VISIBLE : View.GONE);
         InfoChips.fill(mHeroFacts, InfoChips.facts(item));
         InfoChips.fill(mHeroGenres, InfoChips.genres(item));
         mHeroDesc.setText(item.description);

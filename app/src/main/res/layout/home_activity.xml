@@ -161,6 +161,19 @@
                 android:textSize="16sp"
                 android:visibility="gone" />
 
+            <!-- a channel's "On Next", under its "On Now" -->
+            <TextView
+                android:id="@+id/hero_subtitle2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:singleLine="true"
+                android:textColor="#FFCCCCCC"
+                android:textSize="16sp"
+                android:visibility="gone" />
+
             <LinearLayout
                 android:id="@+id/hero_facts"
                 android:layout_width="wrap_content"

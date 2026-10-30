@@ -356,15 +356,20 @@ public final class CatalogRows {
             MetaItem item = mRow.items.get(position);
             ViewGroup.LayoutParams lp = holder.itemView.getLayoutParams();
             boolean landscape = "landscape".equals(item.posterShape);
-            lp.width = holder.itemView.getResources().getDimensionPixelSize(
-                    landscape ? R.dimen.landscape_width : R.dimen.poster_width);
-            lp.height = holder.itemView.getResources().getDimensionPixelSize(
-                    landscape ? R.dimen.landscape_height : R.dimen.poster_height);
+            boolean square = "square".equals(item.posterShape);
+            boolean live = item.id.startsWith(HomeRows.LIVE_PREFIX);
+            lp.width = holder.itemView.getResources().getDimensionPixelSize(square ? R.dimen.square_size
+                    : landscape ? R.dimen.landscape_width : R.dimen.poster_width);
+            lp.height = holder.itemView.getResources().getDimensionPixelSize(square ? R.dimen.square_size
+                    : landscape ? R.dimen.landscape_height : R.dimen.poster_height);
             holder.itemView.setLayoutParams(lp);
-            holder.name.setText(item.name);
-            // Channel logos are shown whole; artwork fills the card.
-            holder.image.setScaleType(item.id.startsWith(HomeRows.LIVE_PREFIX)
-                    ? ImageView.ScaleType.FIT_CENTER : ImageView.ScaleType.CENTER_CROP);
+            // A channel's name only when it has no logo (it would show through a logo's
+            // transparent parts); other titles keep theirs behind the artwork, for when it fails.
+            holder.name.setText(live && !item.poster.isEmpty() ? null : item.name);
+            // Channel logos are shown whole, with a margin; artwork fills the card.
+            holder.image.setScaleType(live ? ImageView.ScaleType.FIT_CENTER : ImageView.ScaleType.CENTER_CROP);
+            int pad = live ? Math.round(12 * holder.itemView.getResources().getDisplayMetrics().density) : 0;
+            holder.image.setPadding(pad, pad, pad, pad);
             Images.load(holder.image, item.poster);
             Badges.bind(holder.itemView, item);
             holder.itemView.setOnClickListener(v -> mListener.onItemClicked(item));

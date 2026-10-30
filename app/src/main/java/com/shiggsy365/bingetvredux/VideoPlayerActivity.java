@@ -55,7 +55,6 @@ public class VideoPlayerActivity extends Activity {
     // A debrid link can take a while to start, but not this long.
     private static final long START_TIMEOUT_MS = 45_000;
     private static final long SAVE_EVERY_MS = 15_000;
-    private static final long UP_NEXT_BEFORE_END_MS = 35_000;
     // Short videos (extras, specials) don't get Up Next.
     private static final long UP_NEXT_MIN_DURATION_MS = 10 * 60_000;
 
@@ -370,7 +369,8 @@ public class VideoPlayerActivity extends Activity {
             return;
         }
         long left = duration - mPlayer.getCurrentPosition();
-        if (left <= UP_NEXT_BEFORE_END_MS) {
+        // When depends on the episode's length (the profile's settings).
+        if (left <= Settings.upNextBeforeEndMs(this, duration)) {
             if (mUpNext.getVisibility() != View.VISIBLE) showUpNext();
             mUpNextCountdown.setText("Starting in " + Math.max(0, left / 1000)
                     + " s   ·   OK to play now   ·   Back to keep watching");

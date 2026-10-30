@@ -16,7 +16,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public final class GuideStore extends SQLiteOpenHelper {
     private static final String DB_NAME = "guide.db";
-    private static final int DB_VERSION = 3;
+    private static final int DB_VERSION = 4;
 
     public static final String CHANNELS = "channels";
     public static final String PROGRAMS = "programs";
@@ -54,16 +54,21 @@ public final class GuideStore extends SQLiteOpenHelper {
                 + "start_ms INTEGER NOT NULL, "
                 + "end_ms INTEGER NOT NULL, "
                 + "title TEXT, "
-                + "description TEXT)");
+                + "description TEXT, "
+                // The guide's picture of the programme (its <icon>), if it has one.
+                + "image TEXT)");
         db.execSQL("CREATE INDEX programs_by_channel ON " + PROGRAMS + " (stream_id, start_ms)");
     }
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        if (oldVersion == 2) {
+        if (oldVersion == 2 || oldVersion == 3) {
             // Keep the guide until the next sync fills these in.
-            db.execSQL("ALTER TABLE " + CHANNELS + " ADD COLUMN archive TEXT");
-            db.execSQL("ALTER TABLE " + CHANNELS + " ADD COLUMN guide_key TEXT");
+            if (oldVersion == 2) {
+                db.execSQL("ALTER TABLE " + CHANNELS + " ADD COLUMN archive TEXT");
+                db.execSQL("ALTER TABLE " + CHANNELS + " ADD COLUMN guide_key TEXT");
+            }
+            db.execSQL("ALTER TABLE " + PROGRAMS + " ADD COLUMN image TEXT");
             return;
         }
         // Everything here is rebuilt by the next sync.

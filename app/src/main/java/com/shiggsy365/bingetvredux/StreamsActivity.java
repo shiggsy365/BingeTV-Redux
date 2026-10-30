@@ -22,6 +22,7 @@ import com.shiggsy365.bingetvredux.stremio.Stream;
 import com.shiggsy365.bingetvredux.stremio.StreamInfo;
 import com.shiggsy365.bingetvredux.stremio.Streams;
 import com.shiggsy365.bingetvredux.stremio.Subtitles;
+import com.shiggsy365.bingetvredux.stremio.Video;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -92,7 +93,8 @@ public class StreamsActivity extends Activity {
         String id = mPlayback.videoId();
         Context app = getApplicationContext();
         List<String> languages = Settings.subtitleLanguages(app);
-        Streams.Prefs prefs = Settings.streamPrefs(app);
+        boolean episode = mPlayback.video != null && mPlayback.video.season != Video.NONE;
+        Streams.Prefs prefs = Settings.streamPrefs(app, episode);
         Future<List<Subtitles.Track>> subtitles = mExecutor.submit(() -> Subtitles.fetch(
                 Stremio.client(app), Stremio.addons(app), type, id, null, languages));
         mExecutor.execute(() -> {
