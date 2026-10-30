@@ -68,7 +68,7 @@ import fi.iki.elonen.NanoHTTPD;
  *   POST /api/sync
  *
  * Live TV's endpoints are LiveApi's; Stremio addons and catalogs: see AddonsApi. Profiles and
- * their settings: see ProfilesApi.
+ * their settings: see ProfilesApi. Radio and podcasts: see AudioApi.
  */
 public class WebServer extends NanoHTTPD {
     private static final String TAG = "WebServer";
@@ -85,6 +85,7 @@ public class WebServer extends NanoHTTPD {
     private final LiveApi mLiveApi;
     private final AddonsApi mAddonsApi;
     private final ProfilesApi mProfilesApi;
+    private final AudioApi mAudioApi;
 
     /** Address -> last request time of devices that opened the page (see WebServerService). */
     static final Map<String, Long> sRecentClients = new java.util.concurrent.ConcurrentHashMap<>();
@@ -95,6 +96,7 @@ public class WebServer extends NanoHTTPD {
         mLiveApi = new LiveApi(mContext);
         mAddonsApi = new AddonsApi(mContext);
         mProfilesApi = new ProfilesApi(mContext);
+        mAudioApi = new AudioApi(mContext);
     }
 
     @Override
@@ -130,6 +132,7 @@ public class WebServer extends NanoHTTPD {
             Object result = mLiveApi.route(uri, session.getParms(), body);
             if (result == null) result = mAddonsApi.route(uri, session.getParms(), body);
             if (result == null) result = mProfilesApi.route(uri, session.getParms(), body);
+            if (result == null) result = mAudioApi.route(uri, session.getParms(), body);
             if (result == null) throw new IllegalArgumentException("Unknown endpoint " + uri);
             return json(Response.Status.OK, result);
         } catch (IllegalArgumentException
@@ -272,10 +275,11 @@ public class WebServer extends NanoHTTPD {
                     .getBytes(StandardCharsets.UTF_8));
             JSONObject profiles = Profiles.export(mContext);
             if (!includePassword) {
-                // Without passwords, the MDBList keys stay behind too.
+                // Without passwords, the MDBList keys and other secrets stay behind too.
                 JSONArray list = profiles.getJSONArray("profiles");
                 for (int i = 0; i < list.length(); i++) {
-                    list.getJSONObject(i).getJSONObject("settings").remove(Settings.MDBLIST_KEY);
+                    JSONObject profileSettings = list.getJSONObject(i).getJSONObject("settings");
+                    for (String s : Settings.SECRETS) profileSettings.remove(s);
                 }
             }
             putEntry(zip, "profiles.json", profiles.toString().getBytes(StandardCharsets.UTF_8));

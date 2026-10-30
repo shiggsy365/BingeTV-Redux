@@ -31,6 +31,10 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     static final String PAGE_HOME = AddonStore.HOME;
     private static final String PAGE_LIVE = "live";
     private static final String PAGE_SEARCH = "search";
+    // Radio and podcasts are pages here; their ids can't be a hub's.
+    private static final String PAGE_RADIO = "audio:radio";
+    private static final String PAGE_PODCASTS = "audio:podcasts";
+    private static final String PAGE_NOW_PLAYING = "audio:now";
     // Whether "Who's watching?" has been asked since the app started.
     private static boolean sProfileChosen;
     private static final long HERO_DELAY_MS = 150;
@@ -177,6 +181,9 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         // been watched: just Home's own rows, in place, so the focus stays where it was.
         if (!pageKeys(mPage).equals(mPageKeys) || !Profiles.current(this).id.equals(mPageProfile)) {
             showPage(mPage);
+        } else if (isAudioPage(mPage)) {
+            // Favourites, subscriptions and what's been listened to may have changed.
+            mRows.reload(AudioRows.CHANGING);
         } else if (WatchStore.get(this).version() != mWatchVersion) {
             mWatchVersion = WatchStore.get(this).version();
             mRows.reload(HomeRows.WATCH_ROWS);
@@ -240,7 +247,11 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
             if (!AddonStore.HOME.equals(hub.id)) addMenuItem(hub.id, hub.name, hubIconPath(hub.id, hub.icon));
         }
         if (Settings.bool(this, Settings.LIVE_TV)) addMenuItem(PAGE_LIVE, "Live TV", MenuIcons.LIVE);
+        if (Settings.bool(this, Settings.RADIO)) addMenuItem(PAGE_RADIO, "Radio", MenuIcons.RADIO);
+        if (Settings.bool(this, Settings.PODCASTS_PAGE)) addMenuItem(PAGE_PODCASTS, "Podcasts", MenuIcons.PODCASTS);
         addMenuItem(PAGE_SEARCH, "Search", MenuIcons.SEARCH);
+        // Radio or a podcast playing (or paused): back to it from here.
+        if (AudioPlayer.active()) addMenuItem(PAGE_NOW_PLAYING, "Now playing", MenuIcons.NOW_PLAYING);
         // Profiles and settings are behind the logo (MainActivity).
         // A hub that's gone (no catalogs left) falls back to Home.
         if (mMenu.findViewWithTag(mPage) == null) mPage = PAGE_HOME;
@@ -298,6 +309,8 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
             startActivity(new Intent(this, GuideActivity.class));
         } else if (PAGE_SEARCH.equals(page)) {
             startActivity(new Intent(this, SearchActivity.class));
+        } else if (PAGE_NOW_PLAYING.equals(page)) {
+            startActivity(new Intent(this, NowPlayingActivity.class));
         } else if (!page.equals(mPage)) {
             showPage(page);
         }
@@ -308,7 +321,11 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     private List<CatalogRows.Row> pageRows(String page) {
         AddonStore store = Stremio.addons(this);
         List<CatalogRows.Row> rows = new ArrayList<>();
-        if (PAGE_HOME.equals(page)) {
+        if (PAGE_RADIO.equals(page)) {
+            rows.addAll(AudioRows.radio(this));
+        } else if (PAGE_PODCASTS.equals(page)) {
+            rows.addAll(AudioRows.podcasts(this));
+        } else if (PAGE_HOME.equals(page)) {
             rows.addAll(HomeRows.rows(this));
             for (AddonStore.Entry e : store.hubCatalogs(AddonStore.HOME)) {
                 rows.add(new CatalogRows.Row(homeTitle(e), e));
@@ -340,8 +357,18 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         return keys;
     }
 
+    private static boolean isAudioPage(String page) {
+        return PAGE_RADIO.equals(page) || PAGE_PODCASTS.equals(page);
+    }
+
     private void showPage(String page) {
         mPage = page;
+        if (PAGE_PODCASTS.equals(page)) {
+            // Other apps' listening, from the sync server, if it's been a while.
+            PodcastSync.syncIfDue(this, () -> {
+                if (!isDestroyed() && PAGE_PODCASTS.equals(mPage)) mRows.reload(AudioRows.CHANGING);
+            });
+        }
         markMenu();
         mPageKeys = pageKeys(page);
         mPageProfile = Profiles.current(this).id;
@@ -360,7 +387,10 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         boolean empty = mRows.shownCount() == 0;
         mEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
         if (!empty) return;
-        if (Stremio.addons(this).all().isEmpty()) {
+        if (isAudioPage(mPage)) {
+            mEmpty.setText(mRows.allLoaded() ? "Nothing to show here: the directory couldn't be reached."
+                    : "Loading…");
+        } else if (Stremio.addons(this).all().isEmpty()) {
             mEmpty.setText("Add your Stremio addons to fill this page.\n\n"
                     + "Select the logo at the top left for the web page's address and PIN, then use its Addons page.");
         } else if (!mRows.allLoaded() || !WatchStore.isOpen()) {
@@ -382,6 +412,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
 
     @Override
     public void onItemClicked(MetaItem item) {
+        if (AudioRows.open(this, item)) return;
         if (item.id.startsWith(HomeRows.LIVE_PREFIX)) {
             long channelId = Long.parseLong(item.id.substring(HomeRows.LIVE_PREFIX.length()));
             Intent player = new Intent(this, PlayerActivity.class)
@@ -431,7 +462,8 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
      * still be loading (after a profile switch, say), so it tries again for a few seconds.
      */
     private void pickMenuArt(int attempt) {
-        if (!mMenuMode || isDestroyed()) return;
+        // Station logos and podcast squares make poor full-screen art.
+        if (!mMenuMode || isDestroyed() || isAudioPage(mPage)) return;
         MetaItem pick = mRows.randomFirstItem();
         if (pick != null) {
             Images.fade(mBackdropFull, pick.background.isEmpty() ? pick.poster : pick.background);
@@ -463,7 +495,8 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         }
         // A channel's backdrop is its program's picture; its logo isn't backdrop material.
         String art = !item.background.isEmpty() ? item.background
-                : item.id.startsWith(HomeRows.LIVE_PREFIX) ? null : item.poster;
+                : item.id.startsWith(HomeRows.LIVE_PREFIX) || item.id.startsWith(Radio.PREFIX) ? null
+                : item.poster;
         Images.fade(mBackdrop, art);
         Images.fadeSoft(mBackdropFull, art);
         mHeroTitle.setText(item.name);

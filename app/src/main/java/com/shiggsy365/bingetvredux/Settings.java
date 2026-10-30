@@ -54,6 +54,20 @@ public final class Settings {
     public static final String LIVE_TV = "liveTv";
     public static final String ROW_WATCHLIST = "rowWatchlist";
     public static final String ROW_ON_NOW = "rowOnNow";
+    /** Radio and Podcasts on the menu bar. */
+    public static final String RADIO = "radio";
+    public static final String PODCASTS_PAGE = "podcastsPage";
+    /** Radio's country for its top stations (two letters; empty: the device's). */
+    public static final String RADIO_COUNTRY = "radioCountry";
+    /** A gPodder-compatible server (oPodSync, Nextcloud gPodder) that keeps podcasts in sync. */
+    public static final String PODCAST_SYNC_URL = "podcastSyncUrl";
+    public static final String PODCAST_SYNC_USER = "podcastSyncUser";
+    public static final String PODCAST_SYNC_PASSWORD = "podcastSyncPassword";
+    /** Podcast Index's API key and secret, for its directory (Apple's is used without). */
+    public static final String PODCAST_INDEX_KEY = "podcastIndexKey";
+    public static final String PODCAST_INDEX_SECRET = "podcastIndexSecret";
+    /** Settings left out of backups made without passwords, and kept when one is restored. */
+    static final String[] SECRETS = {Settings.MDBLIST_KEY, PODCAST_SYNC_PASSWORD, PODCAST_INDEX_SECRET};
 
     /** Every setting with its default, which also gives its type. */
     private static final Map<String, Object> DEFAULTS = new LinkedHashMap<>();
@@ -87,6 +101,14 @@ public final class Settings {
         DEFAULTS.put(LIVE_TV, true);
         DEFAULTS.put(ROW_WATCHLIST, true);
         DEFAULTS.put(ROW_ON_NOW, false);
+        DEFAULTS.put(RADIO, true);
+        DEFAULTS.put(PODCASTS_PAGE, true);
+        DEFAULTS.put(RADIO_COUNTRY, "");
+        DEFAULTS.put(PODCAST_SYNC_URL, "");
+        DEFAULTS.put(PODCAST_SYNC_USER, "");
+        DEFAULTS.put(PODCAST_SYNC_PASSWORD, "");
+        DEFAULTS.put(PODCAST_INDEX_KEY, "");
+        DEFAULTS.put(PODCAST_INDEX_SECRET, "");
     }
 
     private Settings() {}
@@ -155,9 +177,32 @@ public final class Settings {
         prefs(context, profileId).edit().putString(RECENT_CHANNELS, text).apply();
     }
 
-    /** A profile's MDBList key put back (a backup made without passwords leaves it out). */
-    static void putMdblistKey(Context context, String profileId, String key) {
-        prefs(context, profileId).edit().putString(MDBLIST_KEY, key).apply();
+    /** A profile's secret setting put back (a backup made without passwords leaves it out). */
+    static void putSecret(Context context, String profileId, String key, String value) {
+        prefs(context, profileId).edit().putString(key, value).apply();
+    }
+
+    // Lists kept with the profile (and in its backups) that aren't settings, as JSON text.
+    static final String RECENT_SEARCHES = "recentSearches";
+    static final String RADIO_FAVOURITES = "radioFavourites";
+    static final String PODCASTS = "podcasts";
+    static final String PODCAST_PROGRESS = "podcastProgress";
+    static final String[] DATA = {RECENT_SEARCHES, RADIO_FAVOURITES, PODCASTS, PODCAST_PROGRESS};
+
+    static String data(Context context, String key) {
+        return data(context, Profiles.current(context).id, key);
+    }
+
+    static String data(Context context, String profileId, String key) {
+        return prefs(context, profileId).getString(key, "");
+    }
+
+    static void putData(Context context, String key, String json) {
+        putData(context, Profiles.current(context).id, key, json);
+    }
+
+    static void putData(Context context, String profileId, String key, String json) {
+        prefs(context, profileId).edit().putString(key, json).apply();
     }
 
     public static void addRecentChannel(Context context, long channelId) {

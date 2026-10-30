@@ -1,0 +1,22 @@
+# Code compiled ahead of time when the app is installed, so start-up and the first scroll
+# don't wait for the JIT: the app's own start-up path and the libraries Home draws with.
+HSPLcom/shiggsy365/bingetvredux/BingeApp;->**(**)**
+HSPLcom/shiggsy365/bingetvredux/HomeActivity**->**(**)**
+HSPLcom/shiggsy365/bingetvredux/CatalogRows**->**(**)**
+HSPLcom/shiggsy365/bingetvredux/HomeRows**->**(**)**
+HSPLcom/shiggsy365/bingetvredux/Settings**->**(**)**
+HSPLcom/shiggsy365/bingetvredux/Profiles**->**(**)**
+HSPLcom/shiggsy365/bingetvredux/Stremio**->**(**)**
+HSPLcom/shiggsy365/bingetvredux/Images;->**(**)**
+HSPLcom/shiggsy365/bingetvredux/Badges;->**(**)**
+HSPLcom/shiggsy365/bingetvredux/CardFocus;->**(**)**
+HSPLcom/shiggsy365/bingetvredux/MenuIcons**->**(**)**
+HSPLcom/shiggsy365/bingetvredux/InfoChips**->**(**)**
+HSPLcom/shiggsy365/bingetvredux/PreferredMetas**->**(**)**
+HSPLcom/shiggsy365/bingetvredux/WatchStore**->**(**)**
+HSPLcom/shiggsy365/bingetvredux/ShowProgress**->**(**)**
+HSPLcom/shiggsy365/bingetvredux/Background**->**(**)**
+HSPLcom/shiggsy365/bingetvredux/stremio/**->**(**)**
+HSPLandroidx/leanback/widget/**->**(**)**
+HSPLandroidx/recyclerview/widget/**->**(**)**
+HSPLcom/bumptech/glide/**->**(**)**

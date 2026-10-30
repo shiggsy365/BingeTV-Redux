@@ -102,8 +102,8 @@ async function run(fn) {
   try { await fn(); } catch (e) { if (!(e instanceof OfflineError)) toast(e.message); }
 }
 
-const TABS = ['addons', 'catalogs', 'playback', 'home', 'mdblist', 'profiles', 'accounts', 'groups',
-  'logos', 'guides', 'backup'];
+const TABS = ['addons', 'catalogs', 'playback', 'home', 'mdblist', 'radio', 'podcasts', 'profiles',
+  'accounts', 'groups', 'logos', 'guides', 'backup'];
 let currentTab = 'addons';
 
 /** Shows a section and loads what it needs (for the profile picked at the top). */
@@ -115,6 +115,9 @@ function openTab(tab) {
   if (tab === 'addons') run(loadAddons);
   if (tab === 'catalogs') run(loadCatalogs);
   if (['playback', 'home', 'mdblist', 'profiles'].includes(tab)) run(loadProfiles);
+  // The settings first: the podcast sync's status goes into them.
+  if (tab === 'radio') { initAudio(); run(async () => { await loadProfiles(); await loadRadio(); }); }
+  if (tab === 'podcasts') { initAudio(); run(async () => { await loadProfiles(); await loadPodcasts(); }); }
   if (tab === 'logos') openLogos();
   if (tab === 'backup') $('prefMergeUpConfirm').checked = !pref('skipMergeUpConfirm');
 }

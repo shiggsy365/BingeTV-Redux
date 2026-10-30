@@ -88,6 +88,9 @@ public final class CatalogRows {
     // The rows shown: all of them but the empty ones.
     private final List<Row> mShown = new ArrayList<>();
     private final RowsAdapter mAdapter = new RowsAdapter();
+    // Every row's cards come from one pool, so scrolling down reuses the rows above's cards
+    // instead of making new ones.
+    private final RecyclerView.RecycledViewPool mCards = new RecyclerView.RecycledViewPool();
     private Runnable mOnChanged;
     // The focused poster's item and row, so a row reloaded under it can update the hero.
     private MetaItem mFocused;
@@ -112,6 +115,8 @@ public final class CatalogRows {
         grid.setWindowAlignmentOffsetPercent(0f);
         grid.setItemAlignmentOffsetPercent(0f);
         grid.setAdapter(mAdapter);
+        mCards.setMaxRecycledViews(PosterAdapter.TYPE_POSTER, 40);
+        mCards.setMaxRecycledViews(PosterAdapter.TYPE_SQUARE, 20);
         ShowProgress.addListener(mRedrawBadges);
     }
 
@@ -309,8 +314,10 @@ public final class CatalogRows {
         @NonNull
         @Override
         public RowHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            return new RowHolder(LayoutInflater.from(parent.getContext())
+            RowHolder holder = new RowHolder(LayoutInflater.from(parent.getContext())
                     .inflate(R.layout.home_row, parent, false));
+            holder.items.setRecycledViewPool(mCards);
+            return holder;
         }
 
         @Override
@@ -348,7 +355,10 @@ public final class CatalogRows {
     }
 
     private final class PosterAdapter extends RecyclerView.Adapter<PosterHolder> {
-        private static final int TYPE_POSTER = 0, TYPE_SEE_ALL = 1, TYPE_PLACEHOLDER = 2;
+        // Each card shape is its own type, so a card reused from the shared pool is already the
+        // right size (Glide sizes the picture by the card as it is when loading starts).
+        private static final int TYPE_POSTER = 0, TYPE_SEE_ALL = 1, TYPE_PLACEHOLDER = 2,
+                TYPE_SQUARE = 3, TYPE_LANDSCAPE = 4;
         private final Row mRow;
 
         PosterAdapter(Row row) {
@@ -368,7 +378,10 @@ public final class CatalogRows {
         @Override
         public int getItemViewType(int position) {
             if (placeholders()) return TYPE_PLACEHOLDER;
-            return position < mRow.items.size() ? TYPE_POSTER : TYPE_SEE_ALL;
+            if (position >= mRow.items.size()) return TYPE_SEE_ALL;
+            String shape = mRow.items.get(position).posterShape;
+            return "square".equals(shape) ? TYPE_SQUARE : "landscape".equals(shape) ? TYPE_LANDSCAPE
+                    : TYPE_POSTER;
         }
 
         @NonNull
@@ -402,6 +415,7 @@ public final class CatalogRows {
                 lp.height = holder.itemView.getResources().getDimensionPixelSize(R.dimen.poster_height);
                 holder.itemView.setLayoutParams(lp);
                 holder.name.setText("See all\n›");
+                holder.image.setPadding(0, 0, 0, 0);
                 Images.load(holder.image, null);
                 Badges.clear(holder.itemView);
                 holder.itemView.setOnClickListener(v -> mActivity.startActivity(
@@ -415,7 +429,8 @@ public final class CatalogRows {
             ViewGroup.LayoutParams lp = holder.itemView.getLayoutParams();
             boolean landscape = "landscape".equals(item.posterShape);
             boolean square = "square".equals(item.posterShape);
-            boolean live = item.id.startsWith(HomeRows.LIVE_PREFIX);
+            // Channel and station logos.
+            boolean live = item.id.startsWith(HomeRows.LIVE_PREFIX) || item.id.startsWith(Radio.PREFIX);
             lp.width = holder.itemView.getResources().getDimensionPixelSize(square ? R.dimen.square_size
                     : landscape ? R.dimen.landscape_width : R.dimen.poster_width);
             lp.height = holder.itemView.getResources().getDimensionPixelSize(square ? R.dimen.square_size

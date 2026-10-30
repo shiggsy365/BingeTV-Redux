@@ -44,7 +44,9 @@ final class HeroTrailer {
     void show(MetaItem item) {
         stop();
         mItem = item;
-        if (item == null || item.id.startsWith(HomeRows.LIVE_PREFIX)
+        // Not for channels, stations or podcasts, nor over radio or a podcast playing.
+        if (item == null || item.id.startsWith(HomeRows.LIVE_PREFIX) || AudioRows.isAudio(item)
+                || AudioPlayer.get(mActivity).isPlaying()
                 || !Settings.bool(mActivity, Settings.HOME_TRAILERS)) {
             return;
         }

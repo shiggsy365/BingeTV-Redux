@@ -41,6 +41,8 @@ public class TrailerActivity extends Activity {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.trailer_activity);
+        // Radio stops and a podcast pauses: one thing playing at a time.
+        AudioPlayer.yieldToVideo();
         mPlayerView = findViewById(R.id.player_view);
         mStatus = findViewById(R.id.status);
         mStatus.setText("Loading the trailer for " + getIntent().getStringExtra(EXTRA_TITLE) + "…");

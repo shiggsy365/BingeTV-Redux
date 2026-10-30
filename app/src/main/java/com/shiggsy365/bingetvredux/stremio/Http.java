@@ -89,7 +89,8 @@ public final class Http {
                     if (out.size() > mMaxBytes) throw new IOException("answer too large");
                 }
                 body.bytes = out.size();
-                return new Response(body.status, body.contentType, out.toByteArray());
+                return new Response(body.status, body.contentType, out.toByteArray(),
+                        body.mConn.getHeaderFields());
             }
         }
 
@@ -131,11 +132,23 @@ public final class Http {
         /** "" when the server didn't say. */
         public final String contentType;
         public final byte[] bytes;
+        private final Map<String, java.util.List<String>> mHeaders;
 
-        Response(int status, String contentType, byte[] bytes) {
+        Response(int status, String contentType, byte[] bytes, Map<String, java.util.List<String>> headers) {
             this.status = status;
             this.contentType = contentType == null ? "" : contentType;
             this.bytes = bytes;
+            mHeaders = headers;
+        }
+
+        /** Every value of a header (e.g. Set-Cookie), in any case; empty if none. */
+        public java.util.List<String> headers(String name) {
+            java.util.List<String> out = new java.util.ArrayList<>();
+            if (mHeaders == null) return out;
+            for (Map.Entry<String, java.util.List<String>> h : mHeaders.entrySet()) {
+                if (h.getKey() != null && h.getKey().equalsIgnoreCase(name)) out.addAll(h.getValue());
+            }
+            return out;
         }
 
         public boolean ok() {

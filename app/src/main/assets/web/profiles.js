@@ -7,7 +7,8 @@ let settingsProfile = null;
 let profilesReady = false;
 
 // Each profile's settings, as the form shows them, and the page each section is on.
-const PROFILE_PAGES = {playback: 'Playback & languages', home: 'Home & trailers', mdblist: 'MDBList'};
+const PROFILE_PAGES = {playback: 'Playback & languages', home: 'Home & trailers', mdblist: 'MDBList',
+  radio: 'Radio', podcasts: 'Podcasts'};
 const PROFILE_SETTINGS = [
   {page: 'playback', title: 'Streams', help: 'Which streams are offered, and in what order.', fields: [
     {key: 'sort', label: 'Order', type: 'select', options: [[0, 'Best quality first'], [1, 'Biggest first'], [2, 'Addon order']]},
@@ -45,6 +46,22 @@ const PROFILE_SETTINGS = [
     {key: 'homeTrailers', label: 'Play trailers behind the details on Home', type: 'check'},
     {key: 'trailerDelay', label: 'After (seconds on a title)', type: 'number', min: 1, max: 30},
     {key: 'trailerMuted', label: 'Without sound', type: 'check'},
+  ]},
+  {page: 'radio', title: 'Radio', fields: [
+    {key: 'radio', label: 'Radio on the TV\'s menu bar (and stations in Search)', type: 'check'},
+    {key: 'radioCountry', label: 'Country for "Popular in" (two letters, e.g. GB; empty: the TV\'s)', type: 'text', placeholder: 'e.g. GB'},
+  ]},
+  {page: 'podcasts', title: 'Podcasts', fields: [
+    {key: 'podcastsPage', label: 'Podcasts on the TV\'s menu bar (and podcasts in Search)', type: 'check'},
+  ]},
+  {page: 'podcasts', title: 'Sync server', help: 'A gPodder-compatible server, such as oPodSync or Nextcloud\'s gPodder Sync: your subscriptions and where you are in each episode stay in step with other podcast apps (AntennaPod and the like). It syncs when the Podcasts page opens and after listening.', podsync: true, fields: [
+    {key: 'podcastSyncUrl', label: 'Server address', type: 'text', placeholder: 'https://podcasts.example.com'},
+    {key: 'podcastSyncUser', label: 'User name', type: 'text', placeholder: ''},
+    {key: 'podcastSyncPassword', label: 'Password (an app password, if the server has them)', type: 'password'},
+  ]},
+  {page: 'podcasts', title: 'Podcast Index', help: 'Optional. With a free key from api.podcastindex.org, search uses Podcast Index\'s open directory; without one, Apple\'s.', fields: [
+    {key: 'podcastIndexKey', label: 'API key', type: 'text', placeholder: ''},
+    {key: 'podcastIndexSecret', label: 'API secret', type: 'password'},
   ]},
   {page: 'mdblist', title: 'MDBList', help: 'Your API key from mdblist.com (Preferences → API). It syncs what you watch both ways, tells MDBList what\'s playing, and gives Home a watchlist row.', mdblist: true, fields: [
     {key: 'mdblistKey', label: 'API key', type: 'text', placeholder: 'Your MDBList API key'},
@@ -110,6 +127,12 @@ function initProfiles() {
     if (!btn) return;
     if (btn.dataset.act === 'mdbtest') {
       run(async () => toast((await api('/api/mdblist/test', {id: settingsProfile})).message));
+    } else if (btn.dataset.act === 'podsync') {
+      btn.disabled = true;
+      run(async () => {
+        try { const r = await api('/api/podcasts/sync', {id: settingsProfile}); toast(r.message); showPodcasts(r); }
+        finally { btn.disabled = false; }
+      });
     } else if (btn.dataset.act === 'mdbsync') {
       btn.disabled = true;
       run(async () => {
@@ -162,6 +185,10 @@ function renderProfileSettings() {
               <button class="btn" data-act="mdbtest">Test the key</button>
               <button class="btn" data-act="mdbsync">Sync now</button>
             </div>` : ''}
+          ${section.podsync ? `<div class="row" style="margin-top:8px">
+              <button class="btn" data-act="podsync">Sync now</button>
+              <span class="muted" id="podSyncStatus"></span>
+            </div>` : ''}
         </div>`).join('');
     container.querySelectorAll('select').forEach(el => { el.value = String(s[el.dataset.key]); });
   });
@@ -175,6 +202,8 @@ function fieldHtml(f, value) {
   if (f.type === 'select') {
     const numeric = typeof f.options[0][0] === 'number';
     input = `<select data-key="${f.key}"${numeric ? ' data-numeric="1"' : ''}>${f.options.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('')}</select>`;
+  } else if (f.type === 'password') {
+    input = `<input type="password" data-key="${f.key}" value="${esc(value)}" autocomplete="new-password">`;
   } else if (f.type === 'number') {
     input = `<input type="number" data-key="${f.key}" value="${esc(value)}" min="${f.min}" max="${f.max}" style="width:100px">`;
   } else {

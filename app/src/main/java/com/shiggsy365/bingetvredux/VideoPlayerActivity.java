@@ -57,6 +57,12 @@ public class VideoPlayerActivity extends Activity {
     private static final long SAVE_EVERY_MS = 15_000;
     // Short videos (extras, specials) don't get Up Next.
     private static final long UP_NEXT_MIN_DURATION_MS = 10 * 60_000;
+    // The skip button's fallback, for episodes the databases don't know: a typical intro.
+    private static final long SKIP_BY_MS = 85_000;
+    // The "Skip intro" chip goes after this long; the OSD's skip button still works.
+    private static final long SKIP_CHIP_MS = 12_000;
+    // Material "redo" icon (Apache 2.0).
+    private static final String SKIP_ICON = "M18.4,10.6C16.55,8.99 14.15,8 11.5,8c-4.65,0 -8.58,3.03 -9.96,7.22L3.9,16c1.05,-3.19 4.05,-5.5 7.6,-5.5 1.95,0 3.73,0.72 5.12,1.88L13,16h9V7l-3.6,3.6z";
 
     private PlayerView mPlayerView;
     private Osd mOsd;
@@ -67,6 +73,14 @@ public class VideoPlayerActivity extends Activity {
     private boolean mWaitingForSubtitles;
     private View mUpNext;
     private TextView mUpNextCountdown;
+    // The intro, recap and credits, once known (see SkipTimes), and the chip that skips them.
+    private List<SkipTimes.Segment> mSegments = Collections.emptyList();
+    private View mSkip;
+    private TextView mSkipLabel;
+    private SkipTimes.Segment mSkipShown;
+    private long mSkipShownAt;
+    private final java.util.Set<SkipTimes.Segment> mSkipDone = new java.util.HashSet<>();
+    private final Background.Tasks mTasks = new Background.Tasks(1);
     private ExoPlayer mPlayer;
     // Puts the TV in the display mode that suits the video (see FrameRateMatcher).
     private FrameRateMatcher mFrameRate;
@@ -93,6 +107,8 @@ public class VideoPlayerActivity extends Activity {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.video_player_activity);
+        // Radio stops and a podcast pauses: one thing playing at a time.
+        AudioPlayer.yieldToVideo();
         mPlayback = Playback.current();
         if (mPlayback == null || mPlayback.streams.isEmpty()) {
             finish();
@@ -101,6 +117,8 @@ public class VideoPlayerActivity extends Activity {
         mPlayerView = findViewById(R.id.player_view);
         mUpNext = findViewById(R.id.up_next);
         mUpNextCountdown = findViewById(R.id.up_next_countdown);
+        mSkip = findViewById(R.id.skip);
+        mSkipLabel = findViewById(R.id.skip_label);
         mOsd = new Osd(this, mPlayerView, new Osd.Host() {
             @Override
             ExoPlayer player() {
@@ -115,6 +133,8 @@ public class VideoPlayerActivity extends Activity {
         Video previous = mPlayback.previousEpisode(), following = mPlayback.nextEpisode();
         mOsd.button(Osd.PREVIOUS, "Previous episode", () -> playEpisode(previous), () -> previous != null);
         mOsd.addPlaybackButtons();
+        boolean episode = mPlayback.video != null && mPlayback.video.season != Video.NONE;
+        mOsd.button(SKIP_ICON, "Skip " + SKIP_BY_MS / 1000 + " s", this::skipAhead, () -> episode);
         mOsd.button(Osd.NEXT, "Next episode", () -> playEpisode(following), () -> following != null);
         mOsd.button(Osd.STREAMS, "Streams", this::showStreams, null);
         mOsd.addSettingsButtons();
@@ -136,6 +156,14 @@ public class VideoPlayerActivity extends Activity {
         mIndex = mPlayback.start;
         mResumePosition = mPlayback.startMs;
         if (Settings.bool(this, Settings.AUTOPLAY_NEXT)) mNext = mPlayback.nextEpisode();
+        if (episode) {
+            mTasks.execute(() -> {
+                List<SkipTimes.Segment> found = SkipTimes.find(mPlayback.meta, mPlayback.video);
+                runOnUiThread(() -> {
+                    if (!isDestroyed()) mSegments = found;
+                });
+            });
+        }
     }
 
     @Override
@@ -178,6 +206,7 @@ public class VideoPlayerActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (mPlayback != null) mPlayback.setOnSubtitles(null);
+        mTasks.shutdownNow();
         if (mOsd != null) mOsd.release();
         if (mSubtitles != null) mSubtitles.release();
         mHandler.removeCallbacksAndMessages(null);
@@ -198,6 +227,16 @@ public class VideoPlayerActivity extends Activity {
                     mUpNextCancelled = true;
                     mUpNext.setVisibility(View.GONE);
                 }
+                return true;
+            }
+        }
+        if (mSkip.getVisibility() == View.VISIBLE && mSkipShown != null && !mOsd.isShowing()) {
+            if (key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER) {
+                if (up) skip(mSkipShown);
+                return true;
+            }
+            if (key == KeyEvent.KEYCODE_BACK) {
+                if (up) hideSkip(true);
                 return true;
             }
         }
@@ -380,16 +419,87 @@ public class VideoPlayerActivity extends Activity {
             save(null);
         }
         long duration = mPlayer.getDuration();
+        long position = mPlayer.getCurrentPosition();
+        updateSkip(position);
         if (mNext == null || mUpNextCancelled || duration == C.TIME_UNSET
                 || duration < UP_NEXT_MIN_DURATION_MS) {
             return;
         }
-        long left = duration - mPlayer.getCurrentPosition();
-        // When depends on the episode's length (the profile's settings).
-        if (left <= Settings.upNextBeforeEndMs(this, duration)) {
+        long left = duration - position;
+        // When depends on the episode's length (the profile's settings), or as the credits
+        // start, when they're known.
+        SkipTimes.Segment credits = segment(SkipTimes.CREDITS);
+        if (left <= Settings.upNextBeforeEndMs(this, duration)
+                || (credits != null && position >= credits.startMs && left > 0)) {
             if (mUpNext.getVisibility() != View.VISIBLE) showUpNext();
             mUpNextCountdown.setText("Up next  ·  in " + Math.max(0, left / 1000) + " s");
         }
+    }
+
+    // ---- Skipping the intro, recap and credits
+
+    private SkipTimes.Segment segment(String kind) {
+        for (SkipTimes.Segment s : mSegments) if (s.kind.equals(kind)) return s;
+        return null;
+    }
+
+    /** The chip, while a part that can be skipped plays (credits only without Up Next). */
+    private void updateSkip(long position) {
+        SkipTimes.Segment now = null;
+        for (SkipTimes.Segment s : mSegments) {
+            if (!s.contains(position) || mSkipDone.contains(s)) continue;
+            boolean upNextTakesIt = s.kind.equals(SkipTimes.CREDITS) && mNext != null && !mUpNextCancelled;
+            if (!upNextTakesIt) now = s;
+        }
+        if (now != null && now == mSkipShown
+                && System.currentTimeMillis() - mSkipShownAt > SKIP_CHIP_MS) {
+            hideSkip(true);
+            return;
+        }
+        if (now == null || mOsd.isShowing() || mUpNext.getVisibility() == View.VISIBLE) {
+            if (mSkip.getVisibility() == View.VISIBLE) hideSkip(false);
+            return;
+        }
+        if (now != mSkipShown) {
+            mSkipShown = now;
+            mSkipShownAt = System.currentTimeMillis();
+            mSkipLabel.setText(now.label());
+        }
+        mSkip.setVisibility(View.VISIBLE);
+    }
+
+    /** Hides the chip; {@code done}: not again for this part. */
+    private void hideSkip(boolean done) {
+        if (done && mSkipShown != null) mSkipDone.add(mSkipShown);
+        mSkip.setVisibility(View.GONE);
+        if (done) mSkipShown = null;
+    }
+
+    private void skip(SkipTimes.Segment segment) {
+        hideSkip(true);
+        if (mPlayer == null) return;
+        long duration = mPlayer.getDuration();
+        long to = segment.endMs;
+        if (duration != C.TIME_UNSET && to >= duration - 1_000) {
+            finished();
+            return;
+        }
+        mPlayer.seekTo(to);
+    }
+
+    /** The OSD's skip button: past the intro when it's known and still ahead, else 85 s on. */
+    private void skipAhead() {
+        if (mPlayer == null) return;
+        long position = mPlayer.getCurrentPosition();
+        for (SkipTimes.Segment s : mSegments) {
+            if (!s.kind.equals(SkipTimes.CREDITS) && s.endMs > position && s.startMs - position < 60_000) {
+                skip(s);
+                return;
+            }
+        }
+        long duration = mPlayer.getDuration();
+        long to = position + SKIP_BY_MS;
+        mPlayer.seekTo(duration == C.TIME_UNSET ? to : Math.min(to, Math.max(0, duration - 1_000)));
     }
 
     private void showUpNext() {

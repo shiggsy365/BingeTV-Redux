@@ -140,6 +140,8 @@ public class PlayerActivity extends Activity {
         FrameRateMatcher.prepare(this, FrameRateMatcher.LIVE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.player_activity);
+        // Radio stops and a podcast pauses: one thing playing at a time.
+        AudioPlayer.yieldToVideo();
         mTimeFormat = android.text.format.DateFormat.getTimeFormat(this);
         mPrefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         mSubtitles = mPrefs.getBoolean(PREF_SUBTITLES, false);

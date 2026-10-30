@@ -10,9 +10,12 @@ page on your phone or computer, so there's no typing with the remote.
   stream and play.
 - **Live TV** from Xtream Codes accounts, with a TV guide, catch-up and several streams per
   channel (this part was [FyrTuner](https://github.com/shiggsy365/FyrTuner)).
+- **Radio and podcasts:** internet radio from the free radio-browser.info directory, and podcasts
+  from their feeds, kept in step with your other podcast apps through an oPodSync (gPodder)
+  server if you have one.
 
-BingeTV Redux provides no content of its own. Everything comes from your own IPTV account and the
-Stremio addons you add.
+BingeTV Redux provides no content of its own. Everything comes from your own IPTV account, the
+Stremio addons you add, and the public radio and podcast directories.
 
 [<img src="https://github.com/shiggsy365/AIOStreamsKODI/blob/main/.github/support_me_on_kofi_red.png?raw=true">](https://ko-fi.com/shiggsy365)
 
@@ -56,10 +59,20 @@ updates** (under the logo) checks straight away.
 - **Player:** the OSD has the title, times, progress (Up to seek, Left/Right to skip) and buttons
   for streams, audio, subtitles (tracks from the video or your subtitle addons, an offset to fix
   lip sync, and a style), picture size and speed. If a stream fails, the next one is tried. Near
-  the end of an episode, Up Next counts down to the next one. Before playback starts, the TV
+  the end of an episode, Up Next counts down to the next one (from the start of the credits,
+  where they're known). While an intro, recap or credits play, a "Skip intro" chip skips them
+  (times from IntroDB, and AniSkip for anime); episodes also have a "Skip 85 s" button. Before
+  playback starts, the TV
   switches to the refresh rate that suits the video (50 Hz for UK television) where it has one,
   so there's no flash once it's playing.
-- **Search** across all your search catalogs as you type.
+- **Search** across all your search catalogs, podcasts and radio stations as you type, with your
+  recent searches and IMDb's suggestions as chips under the box.
+- **Radio:** favourite stations, the most popular in your country and worldwide, and genres.
+  Stations keep playing while you browse (back to them from ♪ on the menu bar), and the remote's
+  play/pause works on any screen.
+- **Podcasts:** Continue listening, the latest episodes of your podcasts, your subscriptions and
+  Apple's top podcasts. Each podcast's page has Subscribe and its episodes; episodes carry on
+  where you left them.
 - **Live TV:** the guide by channel group, with the same OSD, plus channels, catch-up, Start over
   and Change stream. A stream whose Xtream account is already in use on another TV is skipped, so
   nobody gets cut off.
@@ -80,8 +93,11 @@ updates** (under the logo) checks straight away.
   first), Home's rows, trailers on Home, live TV on or off, and MDBList.
 - **Live TV** (groups and channels, logos, guides): Xtream accounts, channel groups, merging and
   order, logos, XMLTV guides and catch-up.
+- **Radio and Podcasts:** turn them on or off, find stations to add to favourites, subscribe to
+  podcasts (by search or feed URL), and set a gPodder-compatible sync server (oPodSync,
+  Nextcloud gPodder Sync) and an optional Podcast Index key.
 - **Backup and restore:** a backup holds everything, including every profile with its history,
-  and live TV. A FyrTuner backup restores its live TV settings.
+  favourite stations, podcasts and recent searches, and live TV. A FyrTuner backup restores its live TV settings.
 
 **The web page is local to your home network.** It's served by the app on the TV itself, not from
 a website, so it only opens on devices connected to the same network as the TV. What you enter

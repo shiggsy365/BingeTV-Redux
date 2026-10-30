@@ -17,8 +17,8 @@ android {
         applicationId "com.shiggsy365.bingetvredux"
         minSdkVersion 23
         targetSdkVersion 34
-        versionCode 7
-        versionName "1.0.5"
+        versionCode 8
+        versionName "1.0.6"
     }
 
     signingConfigs {
@@ -77,11 +77,15 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer:1.11.1'
     implementation 'androidx.media3:media3-exoplayer-hls:1.11.1'
     implementation 'androidx.media3:media3-ui:1.11.1'
+    // Radio and podcasts: the remote's play/pause and skip keys work on any screen.
+    implementation 'androidx.media3:media3-session:1.11.1'
     // FFmpeg audio decoders (DTS, TrueHD and others the device can't decode itself).
     implementation 'io.github.anilbeesetti:nextlib-media3ext:1.11.1-0.16.0'
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
     implementation 'com.google.zxing:core:3.5.3'
     implementation 'com.github.bumptech.glide:glide:4.16.0'
+    // Installs src/main/baseline-prof.txt, so start-up code is compiled ahead of time.
+    implementation 'androidx.profileinstaller:profileinstaller:1.4.1'
 
     testImplementation 'junit:junit:4.13.2'
     // Android's org.json is a stub in local unit tests.

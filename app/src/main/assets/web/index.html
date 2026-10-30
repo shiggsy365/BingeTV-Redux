@@ -202,6 +202,8 @@
     <button data-tab="playback">Playback &amp; languages</button>
     <button data-tab="home">Home &amp; trailers</button>
     <button data-tab="mdblist">MDBList</button>
+    <button data-tab="radio">Radio</button>
+    <button data-tab="podcasts">Podcasts</button>
   </div>
   <div class="navgroup">
     <h3>Everyone</h3>
@@ -301,6 +303,48 @@
 
   <section id="tab-mdblist" hidden>
     <div class="profile-settings" data-page="mdblist"></div>
+  </section>
+
+  <section id="tab-radio" hidden>
+    <div class="profile-settings" data-page="radio"></div>
+    <div class="panel">
+      <h2>Favourite stations</h2>
+      <p class="muted">The first row of the TV's Radio page, in this order. Hearts on the TV's
+        Now Playing screen add and remove them too. They're kept with the profile, so a backup
+        brings them to another TV.</p>
+      <div id="radioFavourites"><p class="muted">Loading…</p></div>
+    </div>
+    <div class="panel">
+      <h2>Find a station</h2>
+      <p class="muted">From radio-browser.info, a free directory of internet radio.</p>
+      <div class="row">
+        <input type="text" id="radioQuery" class="grow" placeholder="Station name, e.g. BBC Radio 2" autocomplete="off">
+        <button class="btn primary" id="radioSearch">Search</button>
+      </div>
+      <div id="radioResults"></div>
+    </div>
+  </section>
+
+  <section id="tab-podcasts" hidden>
+    <div class="profile-settings" data-page="podcasts"></div>
+    <div class="panel">
+      <h2>Your podcasts</h2>
+      <p class="muted">Subscriptions, shown on the TV's Podcasts page with their latest episodes.
+        With a sync server set above, they're kept in step with your other podcast apps.</p>
+      <div id="podcastList"><p class="muted">Loading…</p></div>
+      <div class="row" style="margin-top:10px">
+        <input type="url" id="podcastUrl" class="grow" placeholder="A podcast's feed URL (RSS)" autocomplete="off">
+        <button class="btn primary" id="podcastAdd">Subscribe</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Find a podcast</h2>
+      <div class="row">
+        <input type="text" id="podcastQuery" class="grow" placeholder="Name or subject" autocomplete="off">
+        <button class="btn primary" id="podcastSearch">Search</button>
+      </div>
+      <div id="podcastResults"></div>
+    </div>
   </section>
 
   <section id="tab-groups" hidden>
@@ -491,6 +535,7 @@
 <script src="/addons.js"></script>
 <script src="/catalogs.js"></script>
 <script src="/profiles.js"></script>
+<script src="/audio.js"></script>
 <script src="/live.js"></script>
 <script src="/app.js"></script>
 </body>

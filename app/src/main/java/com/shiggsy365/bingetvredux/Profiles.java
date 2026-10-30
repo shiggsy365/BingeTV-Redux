@@ -118,9 +118,12 @@ public final class Profiles {
     static JSONObject export(Context context) throws JSONException {
         JSONArray list = new JSONArray();
         for (Profile p : all(context)) {
+            JSONObject data = new JSONObject();
+            for (String key : Settings.DATA) data.put(key, Settings.data(context, p.id, key));
             list.put(new JSONObject().put("id", p.id).put("name", p.name)
                     .put("settings", Settings.toJson(context, p.id))
                     .put("recentChannels", Settings.recentChannelsText(context, p.id))
+                    .put("data", data)
                     .put("watch", WatchStore.export(context, p.id)));
         }
         return new JSONObject().put("profiles", list).put("current", current(context).id);
@@ -128,14 +131,16 @@ public final class Profiles {
 
     /**
      * From a backup: replaces every profile. A backup made without passwords has no MDBList
-     * keys; a profile here already keeps its own, as the TV's password is kept.
+     * keys or other secrets; a profile here already keeps its own, as the TV's password is kept.
      */
     static synchronized void restore(Context context, JSONObject data) throws JSONException {
         JSONArray list = data.getJSONArray("profiles");
         List<Profile> profiles = new ArrayList<>();
-        java.util.Map<String, String> keys = new java.util.HashMap<>();
+        java.util.Map<String, JSONObject> keys = new java.util.HashMap<>();
         for (Profile old : all(context)) {
-            keys.put(old.id, Settings.string(context, old.id, Settings.MDBLIST_KEY));
+            JSONObject secrets = new JSONObject();
+            for (String s : Settings.SECRETS) secrets.put(s, Settings.string(context, old.id, s));
+            keys.put(old.id, secrets);
             WatchStore.delete(context, old.id);
             context.deleteSharedPreferences(Settings.prefsName(old.id));
         }
@@ -145,11 +150,18 @@ public final class Profiles {
             profiles.add(new Profile(id, p.getString("name")));
             JSONObject settings = p.optJSONObject("settings");
             if (settings != null) Settings.apply(context, id, settings);
-            String key = keys.get(id);
-            if ((settings == null || !settings.has(Settings.MDBLIST_KEY)) && key != null && !key.isEmpty()) {
-                Settings.putMdblistKey(context, id, key);
+            JSONObject secrets = keys.get(id);
+            for (String s : Settings.SECRETS) {
+                String kept = secrets == null ? "" : secrets.optString(s);
+                if ((settings == null || !settings.has(s)) && !kept.isEmpty()) {
+                    Settings.putSecret(context, id, s, kept);
+                }
             }
             Settings.setRecentChannelsText(context, id, p.optString("recentChannels"));
+            JSONObject extra = p.optJSONObject("data");
+            for (String key : Settings.DATA) {
+                Settings.putData(context, id, key, extra == null ? "" : extra.optString(key));
+            }
             JSONArray watch = p.optJSONArray("watch");
             if (watch != null) WatchStore.restore(context, id, watch);
         }
