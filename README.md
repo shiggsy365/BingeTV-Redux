@@ -83,7 +83,12 @@ updates** (under the logo) checks straight away.
 - **Backup and restore:** a backup holds everything, including every profile with its history,
   and live TV. A FyrTuner backup restores its live TV settings.
 
-The web page only works in a browser that has entered the TV's PIN. Settings on the TV can make a
+**The web page is local to your home network.** It's served by the app on the TV itself, not from
+a website, so it only opens on devices connected to the same network as the TV. What you enter
+there (addon links, Xtream logins, your MDBList key) is saved on the TV and isn't sent to us or
+any other server. The app only uses those details to contact the services they belong to.
+
+The page also only works in a browser that has entered the TV's PIN. Settings on the TV can make a
 new PIN or forget every browser.
 
 ## Building
