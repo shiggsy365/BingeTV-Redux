@@ -81,6 +81,8 @@ public final class WatchStore {
         public long watchedAt;
         public long updatedAt;
         public boolean synced;
+        /** When it was marked unwatched here (0: never); MDBList is told while not synced. */
+        public long unwatchedAt;
 
         public float progress() {
             return durationMs > 0 ? Math.min(1f, positionMs / (float) durationMs) : 0f;
@@ -88,6 +90,8 @@ public final class WatchStore {
     }
 
     private static WatchStore sInstance;
+    // Goes up with every reset, so get() can tell one happened while it read the profile.
+    private static int sGeneration;
     private final Helper mHelper;
     private final Map<String, Row> mRows = new HashMap<>();
     // Shows hidden from Next Up and Continue Watching until something newer happens in them.
@@ -97,6 +101,8 @@ public final class WatchStore {
     private Map<String, Row> mResumeByMeta;
     // Show id -> "season:episode" of its watched episodes; null until needed after a change.
     private Map<String, Set<String>> mWatchedByMeta;
+    // Show id -> when any of its episodes was last played or watched; null until needed.
+    private Map<String, Long> mActiveByMeta;
     private int mVersion;
 
     private WatchStore(Context context, String profileId) {
@@ -122,17 +128,33 @@ public final class WatchStore {
         return sInstance != null;
     }
 
-    /** The current profile's store. */
-    public static synchronized WatchStore get(Context context) {
-        if (sInstance == null) sInstance = new WatchStore(context, Profiles.current(context).id);
-        return sInstance;
+    /**
+     * The current profile's store. The profile in use is read without holding this class's
+     * lock: Profiles.setCurrent holds its own lock while it resets this, so asking it while
+     * holding ours deadlocked (an MDBList sync starting as a profile was picked froze the TV).
+     */
+    public static WatchStore get(Context context) {
+        while (true) {
+            int generation;
+            synchronized (WatchStore.class) {
+                if (sInstance != null) return sInstance;
+                generation = sGeneration;
+            }
+            String profileId = Profiles.current(context).id;
+            synchronized (WatchStore.class) {
+                // Reset meanwhile (another profile chosen): read which one again.
+                if (generation != sGeneration) continue;
+                if (sInstance == null) sInstance = new WatchStore(context, profileId);
+                return sInstance;
+            }
+        }
     }
 
     /**
      * Any profile's store: the open one for the profile in use, else one opened for the
      * purpose, which the caller {@link #close}s.
      */
-    static synchronized WatchStore forProfile(Context context, String profileId) {
+    static WatchStore forProfile(Context context, String profileId) {
         if (profileId.equals(Profiles.current(context).id)) return get(context);
         return new WatchStore(context, profileId);
     }
@@ -148,6 +170,7 @@ public final class WatchStore {
     static synchronized void reset() {
         if (sInstance != null) sInstance.mHelper.close();
         sInstance = null;
+        sGeneration++;
     }
 
     static synchronized void delete(Context context, String profileId) {
@@ -210,7 +233,7 @@ public final class WatchStore {
     /** Part-watched films and episodes, last played first, one episode per show. */
     public synchronized List<Row> continueWatching(int limit) {
         List<Row> rows = new ArrayList<>();
-        for (Row r : mRows.values()) if (r.positionMs > 0 && !r.watched) rows.add(r);
+        for (Row r : mRows.values()) if (r.positionMs > 0 && !r.watched && !superseded(r)) rows.add(r);
         Collections.sort(rows, (a, b) -> Long.compare(b.updatedAt, a.updatedAt));
         List<Row> out = new ArrayList<>();
         Set<String> shows = new HashSet<>();
@@ -232,12 +255,32 @@ public final class WatchStore {
             // Built when first needed after a change: posters ask this for every card.
             mResumeByMeta = new HashMap<>();
             for (Row r : mRows.values()) {
-                if (r.positionMs <= 0 || r.watched || r.entry.metaId.isEmpty()) continue;
+                if (r.positionMs <= 0 || r.watched || r.entry.metaId.isEmpty() || superseded(r)) continue;
                 Row best = mResumeByMeta.get(r.entry.metaId);
                 if (best == null || r.updatedAt > best.updatedAt) mResumeByMeta.put(r.entry.metaId, r);
             }
         }
         return mResumeByMeta.get(metaId);
+    }
+
+    /**
+     * Whether an episode's resume point has been left behind: another of the show's episodes
+     * was played or watched since (e.g. a paused session from another device, or an episode
+     * skipped for the next). Its show is Next Up's then.
+     */
+    private boolean superseded(Row r) {
+        if (!r.entry.isEpisode() || r.entry.metaId.isEmpty()) return false;
+        if (mActiveByMeta == null) {
+            mActiveByMeta = new HashMap<>();
+            for (Row o : mRows.values()) {
+                if (!o.entry.isEpisode() || o.entry.metaId.isEmpty()) continue;
+                long t = Math.max(o.updatedAt, o.watched ? o.watchedAt : 0);
+                Long prev = mActiveByMeta.get(o.entry.metaId);
+                if (prev == null || t > prev) mActiveByMeta.put(o.entry.metaId, t);
+            }
+        }
+        Long active = mActiveByMeta.get(r.entry.metaId);
+        return active != null && active > r.updatedAt;
     }
 
     /** Shows with watched episodes, most recently active first: {show id, type, last active ms}. */
@@ -311,6 +354,13 @@ public final class WatchStore {
         return out;
     }
 
+    /** Marked unwatched here, and MDBList not told yet. */
+    public synchronized List<Row> unsyncedUnwatched() {
+        List<Row> out = new ArrayList<>();
+        for (Row r : mRows.values()) if (!r.watched && !r.synced && r.unwatchedAt > 0) out.add(r);
+        return out;
+    }
+
     public synchronized List<Row> all() {
         return new ArrayList<>(mRows.values());
     }
@@ -341,6 +391,7 @@ public final class WatchStore {
                 if (!row.watched) row.synced = false;
                 row.watched = true;
                 row.watchedAt = now;
+                row.unwatchedAt = 0;
                 row.positionMs = 0;
             } else {
                 row.positionMs = positionMs;
@@ -377,6 +428,9 @@ public final class WatchStore {
                     row.watched = watched;
                     row.positionMs = 0;
                     row.watchedAt = watched ? now : 0;
+                    // Unwatched: MDBList is told at the next sync, and its history can't
+                    // mark it watched again meanwhile.
+                    row.unwatchedAt = watched ? 0 : now;
                     row.synced = false;
                     if (watched) row.updatedAt = now;
                     write(row);
@@ -412,6 +466,7 @@ public final class WatchStore {
                     row.watched = state[0] == 1;
                     row.positionMs = state[1];
                     row.watchedAt = state[2];
+                    row.unwatchedAt = row.watched ? 0 : System.currentTimeMillis();
                     row.synced = false;
                     write(row);
                 }
@@ -485,12 +540,18 @@ public final class WatchStore {
                 for (int i = 0; i < entries.size(); i++) {
                     Row existing = mRows.get(entries.get(i).videoId);
                     if (existing != null && existing.watched && existing.synced) continue;
+                    long at = watchedAt.get(i);
+                    // Marked unwatched here after MDBList's watch (or MDBList not told yet).
+                    if (existing != null && !existing.watched && existing.unwatchedAt > 0
+                            && (at <= existing.unwatchedAt || !existing.synced)) {
+                        continue;
+                    }
                     Row row = merged(entries.get(i));
                     if (!row.watched) added++;
                     row.watched = true;
                     row.synced = true;
+                    row.unwatchedAt = 0;
                     row.positionMs = 0;
-                    long at = watchedAt.get(i);
                     row.watchedAt = at > 0 ? at : (row.watchedAt > 0 ? row.watchedAt : System.currentTimeMillis());
                     row.updatedAt = Math.max(row.updatedAt, row.watchedAt);
                     write(row);
@@ -549,6 +610,7 @@ public final class WatchStore {
             mDismissed.clear();
             mResumeByMeta = null;
             mWatchedByMeta = null;
+            mActiveByMeta = null;
         }
         changed();
     }
@@ -589,6 +651,7 @@ public final class WatchStore {
         mRows.put(row.entry.videoId, row);
         mResumeByMeta = null;
         mWatchedByMeta = null;
+        mActiveByMeta = null;
         Entry e = row.entry;
         ContentValues v = new ContentValues();
         v.put("video_id", e.videoId);
@@ -609,6 +672,7 @@ public final class WatchStore {
         v.put("watched_at", row.watchedAt);
         v.put("updated_at", row.updatedAt);
         v.put("synced", row.synced ? 1 : 0);
+        v.put("unwatched_at", row.unwatchedAt);
         mHelper.getWritableDatabase().insertWithOnConflict("progress", null, v,
                 SQLiteDatabase.CONFLICT_REPLACE);
     }
@@ -631,6 +695,7 @@ public final class WatchStore {
         r.watchedAt = c.getLong(c.getColumnIndexOrThrow("watched_at"));
         r.updatedAt = c.getLong(c.getColumnIndexOrThrow("updated_at"));
         r.synced = c.getInt(c.getColumnIndexOrThrow("synced")) != 0;
+        r.unwatchedAt = c.getLong(c.getColumnIndexOrThrow("unwatched_at"));
         return r;
     }
 
@@ -654,7 +719,8 @@ public final class WatchStore {
                         .put("bingeGroup", e.bingeGroup).put("ids", e.ids)
                         .put("position", r.positionMs).put("duration", r.durationMs)
                         .put("watched", r.watched).put("watchedAt", r.watchedAt)
-                        .put("updatedAt", r.updatedAt).put("synced", r.synced));
+                        .put("updatedAt", r.updatedAt).put("synced", r.synced)
+                        .put("unwatchedAt", r.unwatchedAt));
             }
         }
         if (store != sInstance) store.mHelper.close();
@@ -682,6 +748,7 @@ public final class WatchStore {
                 r.watchedAt = o.optLong("watchedAt");
                 r.updatedAt = o.optLong("updatedAt");
                 r.synced = o.optBoolean("synced");
+                r.unwatchedAt = o.optLong("unwatchedAt");
                 store.write(r);
             }
             db.setTransactionSuccessful();
@@ -693,7 +760,7 @@ public final class WatchStore {
 
     private static final class Helper extends SQLiteOpenHelper {
         Helper(Context context, String name) {
-            super(context, name, null, 1);
+            super(context, name, null, 2);
         }
 
         @Override
@@ -702,14 +769,17 @@ public final class WatchStore {
                     + " season INTEGER, episode INTEGER, title TEXT, name TEXT, poster TEXT,"
                     + " background TEXT, logo TEXT, binge_group TEXT, ids TEXT,"
                     + " position_ms INTEGER, duration_ms INTEGER, watched INTEGER,"
-                    + " watched_at INTEGER, updated_at INTEGER, synced INTEGER)");
+                    + " watched_at INTEGER, updated_at INTEGER, synced INTEGER,"
+                    + " unwatched_at INTEGER NOT NULL DEFAULT 0)");
             db.execSQL("CREATE INDEX progress_meta ON progress (meta_id)");
             db.execSQL("CREATE TABLE dismissed (meta_id TEXT PRIMARY KEY, dismissed_at INTEGER)");
         }
 
         @Override
         public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-            // Version 1 is the first.
+            if (oldVersion < 2) {
+                db.execSQL("ALTER TABLE progress ADD COLUMN unwatched_at INTEGER NOT NULL DEFAULT 0");
+            }
         }
     }
 }

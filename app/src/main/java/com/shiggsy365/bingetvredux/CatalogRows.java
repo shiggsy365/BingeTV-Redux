@@ -37,12 +37,20 @@ public final class CatalogRows {
         void onItemClicked(MetaItem item);
     }
 
+    /** A row's items again, better (e.g. with the first metadata addon's details). */
+    public interface Better {
+        List<MetaItem> apply(List<MetaItem> shown);
+    }
+
     /** One row: a catalog to load, items worked out by code (loader), or a fixed list. */
     public static final class Row {
         final String title;
         final AddonStore.Entry entry;
         final java.util.concurrent.Callable<List<MetaItem>> loader;
         final List<MetaItem> items = new ArrayList<>();
+        // See loadNow() and then().
+        boolean now;
+        Better better;
         int nextSkip;
         int pageSize;
         boolean loading;
@@ -71,6 +79,25 @@ public final class CatalogRows {
             nextSkip = -1;
             loaded = true;
         }
+
+        /**
+         * Loads as soon as the rows are set, not when first shown, and stays hidden until it
+         * has items (Search's results, each row appearing as its answer comes).
+         */
+        public Row loadNow() {
+            now = true;
+            return this;
+        }
+
+        /**
+         * Once the loader's quick items are shown, replaces them with {@code better}'s (worked
+         * out off the main thread). A row whose loader finds nothing keeps its placeholders
+         * until then.
+         */
+        public Row then(Better better) {
+            this.better = better;
+            return this;
+        }
     }
 
     private static final int PAGE_AHEAD = 8;
@@ -83,7 +110,7 @@ public final class CatalogRows {
     private final VerticalGridView mGrid;
     private final Listener mListener;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private final Background.Tasks mExecutor = new Background.Tasks(4);
+    private final Background.Tasks mExecutor = new Background.Tasks(8);
     private final List<Row> mAll = new ArrayList<>();
     // The rows shown: all of them but the empty ones.
     private final List<Row> mShown = new ArrayList<>();
@@ -130,6 +157,7 @@ public final class CatalogRows {
         mAll.addAll(rows);
         refreshShown();
         mGrid.scrollToPosition(0);
+        for (Row r : rows) if (r.now) load(r);
     }
 
     /** A random item of the first row that has any; null if none has loaded yet. */
@@ -170,7 +198,7 @@ public final class CatalogRows {
 
     private void refreshShown() {
         mShown.clear();
-        for (Row r : mAll) if (!(r.loaded || r.failed) || !r.items.isEmpty()) mShown.add(r);
+        for (Row r : mAll) if (!r.items.isEmpty() || !(r.now || r.loaded || r.failed)) mShown.add(r);
         mAdapter.notifyDataSetChanged();
         if (mOnChanged != null) mOnChanged.run();
     }
@@ -233,7 +261,22 @@ public final class CatalogRows {
                 items = new ArrayList<>();
             }
             List<MetaItem> result = items;
-            mHandler.post(() -> showItems(row, result));
+            if (row.better == null) {
+                mHandler.post(() -> showItems(row, result, false));
+                return;
+            }
+            if (!result.isEmpty()) mHandler.post(() -> showItems(row, result, true));
+            // Its own task, so a slow second pass doesn't hold up other rows' loaders.
+            mExecutor.execute(() -> {
+                List<MetaItem> better;
+                try {
+                    better = row.better.apply(result);
+                } catch (Exception e) {
+                    better = result;
+                }
+                List<MetaItem> shown = better;
+                mHandler.post(() -> showItems(row, shown, false));
+            });
         });
     }
 
@@ -274,16 +317,19 @@ public final class CatalogRows {
         if (changed && row.adapter != null) row.adapter.notifyDataSetChanged();
     }
 
-    private void showItems(Row row, List<MetaItem> items) {
+    /** {@code more}: a better list is still to come. */
+    private void showItems(Row row, List<MetaItem> items, boolean more) {
         if (mActivity.isDestroyed()) return;
-        row.loading = false;
+        row.loading = more;
         row.loaded = true;
         row.nextSkip = -1;
         boolean same = sameItems(row.items, items) && row.items.size() == items.size();
         row.items.clear();
         row.items.addAll(items);
+        if (!mAll.contains(row)) return;  // From rows set before these.
         // A reloaded row may have emptied, or a hidden one gained items.
-        if (items.isEmpty() || !mShown.contains(row)) refreshShown();
+        if (row.now && !items.isEmpty() && !mShown.contains(row)) insertShown(row);
+        else if (items.isEmpty() || !mShown.contains(row)) refreshShown();
         else if (row.adapter != null) {
             if (same) row.adapter.notifyItemRangeChanged(0, items.size());
             else row.adapter.notifyDataSetChanged();
@@ -300,6 +346,21 @@ public final class CatalogRows {
                 break;
             }
         }
+    }
+
+    /** Shows a row that has just found items, in its place, leaving the rows around it be. */
+    private void insertShown(Row row) {
+        int at = 0;
+        for (Row r : mAll) {
+            if (r == row) break;
+            if (mShown.contains(r)) at++;
+        }
+        mShown.add(at, row);
+        mAdapter.notifyItemInserted(at);
+        // Unless someone's in the rows, the first stays at the top (one inserted above it
+        // would otherwise sit out of sight).
+        if (at == 0 && !mGrid.hasFocus()) mGrid.scrollToPosition(0);
+        if (mOnChanged != null) mOnChanged.run();
     }
 
     private static boolean sameItems(List<MetaItem> a, List<MetaItem> b) {

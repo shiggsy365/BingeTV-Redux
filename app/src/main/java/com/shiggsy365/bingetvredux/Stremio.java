@@ -30,7 +30,9 @@ public final class Stremio {
     }
 
     /** The addons of the profile in use. */
-    public static synchronized AddonStore addons(Context context) {
+    public static AddonStore addons(Context context) {
+        // The profile read before taking this class's lock: Profiles holds its own while
+        // copying or deleting addons here, so the other order could deadlock.
         return addons(context, Profiles.current(context).id);
     }
 

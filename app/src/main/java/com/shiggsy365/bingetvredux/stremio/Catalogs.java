@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
 
 /** Fetching, paging and searching catalogs. */
 public final class Catalogs {
@@ -20,7 +19,6 @@ public final class Catalogs {
     private static final double FULL_PAGE_RATIO = 0.8;
     private static final int MIN_FULL_PAGE = 10;
     public static final long TTL_MS = 30 * 60_000L;
-    private static final long SEARCH_TIMEOUT_MS = 20_000;
 
     private Catalogs() {}
 
@@ -141,40 +139,10 @@ public final class Catalogs {
     }
 
     /** One search catalog's results. */
-    public static final class SearchResult {
-        public final AddonStore.Entry entry;
-        public final List<MetaItem> items;
-        /** Null when it worked. */
-        public final String error;
-
-        SearchResult(AddonStore.Entry entry, List<MetaItem> items, String error) {
-            this.entry = entry;
-            this.items = items;
-            this.error = error;
-        }
-
-        /** The same result with other items. */
-        public SearchResult withItems(List<MetaItem> other) {
-            return new SearchResult(entry, other, error);
-        }
-    }
-
-    /** Searches the catalogs at once; results come back in the catalogs' order. */
-    public static List<SearchResult> search(StremioClient client, List<AddonStore.Entry> entries,
-            String query) {
-        List<Callable<List<MetaItem>>> tasks = new ArrayList<>();
-        for (AddonStore.Entry e : entries) {
-            Map<String, String> filters = new LinkedHashMap<>();
-            filters.put("search", query);
-            tasks.add(() -> fetch(client, e.addon, e.catalog, filters, 0, 0).items);
-        }
-        List<Parallel.Result<List<MetaItem>>> results = Parallel.run(tasks, SEARCH_TIMEOUT_MS);
-        List<SearchResult> out = new ArrayList<>();
-        for (int i = 0; i < entries.size(); i++) {
-            Parallel.Result<List<MetaItem>> r = results.get(i);
-            out.add(new SearchResult(entries.get(i), r.ok() ? r.value : new ArrayList<>(),
-                    r.ok() ? null : r.error.getMessage()));
-        }
-        return out;
+    public static List<MetaItem> search(StremioClient client, AddonStore.Entry entry, String query)
+            throws StremioException {
+        Map<String, String> filters = new LinkedHashMap<>();
+        filters.put("search", query);
+        return fetch(client, entry.addon, entry.catalog, filters, 0, 0).items;
     }
 }

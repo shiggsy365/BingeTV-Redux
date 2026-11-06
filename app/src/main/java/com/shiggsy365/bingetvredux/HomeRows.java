@@ -48,12 +48,15 @@ final class HomeRows {
         Context app = context.getApplicationContext();
         List<CatalogRows.Row> rows = new ArrayList<>();
         boolean combined = Settings.bool(app, Settings.CONTINUE_WITH_NEXT_UP);
+        // Each first from the cache and what was saved when played (at once, even on a TV
+        // restored from a backup, which has no cache), then from the addons.
         if (Settings.bool(app, Settings.ROW_CONTINUE)) {
-            rows.add(new CatalogRows.Row(CONTINUE, () -> combined
-                    ? newestFirst(continueWatching(app), nextUp(app)) : items(continueWatching(app))));
+            rows.add(new CatalogRows.Row(CONTINUE, () -> continueRow(app, combined, true))
+                    .then(shown -> continueRow(app, combined, false)));
         }
         if (Settings.bool(app, Settings.ROW_NEXT_UP) && !(combined && Settings.bool(app, Settings.ROW_CONTINUE))) {
-            rows.add(new CatalogRows.Row(NEXT_UP, () -> items(nextUp(app))));
+            rows.add(new CatalogRows.Row(NEXT_UP, () -> items(nextUp(app, true)))
+                    .then(shown -> items(nextUp(app, false))));
         }
         if (Settings.bool(app, Settings.ROW_WATCHLIST) && Mdblist.enabled(app)) {
             rows.add(new CatalogRows.Row(WATCHLIST, () -> withMetas(app, Mdblist.watchlist(app, false))));
@@ -87,6 +90,17 @@ final class HomeRows {
         return out;
     }
 
+    /** Continue Watching, with Next Up's episodes too if {@code combined}; both looked up at once. */
+    private static List<MetaItem> continueRow(Context app, boolean combined, boolean cachedOnly) {
+        if (!combined) return items(continueWatching(app, cachedOnly));
+        List<Callable<List<Timed>>> both = new ArrayList<>();
+        both.add(() -> continueWatching(app, cachedOnly));
+        both.add(() -> nextUp(app, cachedOnly));
+        List<Parallel.Result<List<Timed>>> r = Parallel.run(both, NEXT_UP_TIMEOUT_MS + 5_000);
+        return newestFirst(r.get(0).ok() ? r.get(0).value : new ArrayList<>(),
+                r.get(1).ok() ? r.get(1).value : new ArrayList<>());
+    }
+
     /** Part-watched items and next episodes in one row, most recently active first. */
     static List<MetaItem> newestFirst(List<Timed> a, List<Timed> b) {
         List<Timed> all = new ArrayList<>(a);
@@ -98,12 +112,13 @@ final class HomeRows {
 
     /**
      * Part-watched films and episodes, each with its film's or show's meta from the addons (as
-     * BingeTV shows them): the episode's plot, and what's left of it.
+     * BingeTV shows them): the episode's plot, and what's left of it. {@code cachedOnly}: only
+     * metas already cached are used, without asking the addons.
      */
-    private static List<Timed> continueWatching(Context context) {
+    private static List<Timed> continueWatching(Context context, boolean cachedOnly) {
         List<Callable<Timed>> tasks = new ArrayList<>();
         for (WatchStore.Row r : WatchStore.get(context).continueWatching(CONTINUE_LIMIT)) {
-            tasks.add(() -> new Timed(r.updatedAt, resumeItem(context, r)));
+            tasks.add(() -> new Timed(r.updatedAt, resumeItem(context, r, cachedOnly)));
         }
         List<Timed> out = new ArrayList<>();
         for (Parallel.Result<Timed> r : Parallel.run(tasks, NEXT_UP_TIMEOUT_MS)) {
@@ -112,14 +127,18 @@ final class HomeRows {
         return out;
     }
 
-    private static MetaItem resumeItem(Context context, WatchStore.Row r) throws Exception {
+    private static MetaItem resumeItem(Context context, WatchStore.Row r, boolean cachedOnly)
+            throws Exception {
         WatchStore.Entry e = r.entry;
         String left = DetailsActivity.clock(Math.max(0, r.durationMs - r.positionMs)) + " left";
         String code = String.format(Locale.ROOT, "S%d E%d", e.season, e.episode);
         String id = e.metaId.isEmpty() ? e.videoId : e.metaId;
         MetaItem meta = null;
         try {
-            meta = Metas.fetch(Stremio.client(context), Stremio.addons(context), e.type, id).meta;
+            Metas.Found found = cachedOnly
+                    ? Metas.cached(Stremio.client(context), Stremio.addons(context), e.type, id)
+                    : Metas.fetch(Stremio.client(context), Stremio.addons(context), e.type, id);
+            if (found != null) meta = found.meta;
         } catch (StremioException ignored) {
             // What was saved when it was played still makes a card.
         }
@@ -155,16 +174,20 @@ final class HomeRows {
     /**
      * For each show recently watched, the episode after the furthest one watched, if it has
      * aired and nothing of the show is part-watched (that's Continue Watching's).
+     * {@code cachedOnly}: only shows whose meta is already cached.
      */
-    private static List<Timed> nextUp(Context context) {
+    private static List<Timed> nextUp(Context context, boolean cachedOnly) {
         WatchStore store = WatchStore.get(context);
         String today = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new Date());
         List<Callable<Timed>> tasks = new ArrayList<>();
         for (String[] show : store.recentShows(NEXT_UP_SHOWS)) {
             if (store.resumeFor(show[0]) != null) continue;
             tasks.add(() -> {
-                MetaItem meta = Metas.fetch(Stremio.client(context), Stremio.addons(context),
-                        show[1], show[0]).meta;
+                Metas.Found found = cachedOnly
+                        ? Metas.cached(Stremio.client(context), Stremio.addons(context), show[1], show[0])
+                        : Metas.fetch(Stremio.client(context), Stremio.addons(context), show[1], show[0]);
+                if (found == null) return null;
+                MetaItem meta = found.meta;
                 Video next = next(meta, store.watchedEpisodes(show[0]), today);
                 if (next == null) return null;
                 String what = "Next: " + DetailsActivity.episodeCode(next)

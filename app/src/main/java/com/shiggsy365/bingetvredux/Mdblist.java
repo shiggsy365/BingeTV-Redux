@@ -427,6 +427,19 @@ public final class Mdblist {
         });
     }
 
+    /** Syncs now in the background (marked watched or unwatched on the info page). */
+    public static void syncSoon(Context context) {
+        if (!enabled(context) || !Settings.bool(context, Settings.MDBLIST_SYNC)) return;
+        Context app = context.getApplicationContext();
+        sExecutor.execute(() -> {
+            try {
+                sync(app, false);
+            } catch (MdblistException e) {
+                Log.w(TAG, "Sync failed: " + e.getMessage());
+            }
+        });
+    }
+
     private static SharedPreferences syncPrefs(Context context) {
         return context.getApplicationContext().getSharedPreferences(
                 "mdblist_" + Profiles.current(context).id, Context.MODE_PRIVATE);
@@ -458,7 +471,7 @@ public final class Mdblist {
         String key = Settings.string(context, profileId, Settings.MDBLIST_KEY);
         if (key.isEmpty()) throw new MdblistException("Add an MDBList API key first");
         boolean inUse = profileId.equals(Profiles.current(context).id);
-        int pushed = 0, added = 0, resumes = 0, listed = -1;
+        int pushed = 0, removed = 0, added = 0, resumes = 0, listed = -1;
         try {
             List<WatchStore.Row> pending = store.unsyncedWatched();
             List<String> pendingIds = new ArrayList<>();
@@ -471,6 +484,19 @@ public final class Mdblist {
                 if (supported(r.entry.ids, r.entry.isEpisode()).length() > 0) pushed++;
             }
             store.markSynced(pendingIds);
+            // Marked unwatched here: taken out of MDBList's history too, else its next pull
+            // would mark them watched again.
+            List<WatchStore.Row> unwatched = store.unsyncedUnwatched();
+            List<String> unwatchedIds = new ArrayList<>();
+            for (int i = 0; i < unwatched.size(); i += BATCH) {
+                JSONObject body = watchedBody(unwatched.subList(i, Math.min(unwatched.size(), i + BATCH)));
+                if (body.length() > 0) request(key, "POST", "/sync/watched/remove", null, body);
+            }
+            for (WatchStore.Row r : unwatched) {
+                unwatchedIds.add(r.entry.videoId);
+                if (supported(r.entry.ids, r.entry.isEpisode()).length() > 0) removed++;
+            }
+            store.markSynced(unwatchedIds);
 
             SharedPreferences prefs = context.getApplicationContext().getSharedPreferences(
                     "mdblist_" + profileId, Context.MODE_PRIVATE);
@@ -478,7 +504,7 @@ public final class Mdblist {
             JSONObject marker = activities instanceof JSONObject
                     ? new JSONObject(activities.toString()) : new JSONObject();
             marker.remove("server_time");
-            if (force || !pending.isEmpty() || !marker.toString().equals(prefs.getString("activities", ""))) {
+            if (force || !pending.isEmpty() || !unwatched.isEmpty() || !marker.toString().equals(prefs.getString("activities", ""))) {
                 added = pull(key, store);
             }
             prefs.edit().putString("activities", marker.toString())
@@ -490,7 +516,8 @@ public final class Mdblist {
         }
         // The watchlist kept is the profile in use's.
         if (force && inUse) listed = watchlist(context, true).size();
-        return "Sent " + pushed + " watched, received " + added + " new"
+        return "Sent " + pushed + " watched" + (removed > 0 ? ", " + removed + " unwatched" : "")
+                + ", received " + added + " new"
                 + (resumes > 0 ? ", " + resumes + " resume points" : "")
                 + (listed >= 0 ? "; " + listed + " on the watchlist" : "");
     }

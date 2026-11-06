@@ -579,6 +579,7 @@ public class DetailsActivity extends Activity {
         if (mUndo != null && target.equals(mUndoTarget)
                 && System.currentTimeMillis() - mUndoAt < UNDO_MS) {
             store.restoreWatched(mUndo, mUndoStates);
+            Mdblist.syncSoon(this);
             mUndo = null;
             Toast.makeText(this, "Undone", Toast.LENGTH_SHORT).show();
             updateWatched();
@@ -602,6 +603,7 @@ public class DetailsActivity extends Activity {
         mUndoTarget = target;
         mUndoAt = System.currentTimeMillis();
         store.setWatched(entries, watched);
+        Mdblist.syncSoon(this);
         String what = mPicked != null ? episodeCode(mPicked)
                 : mItem.hasSeasons() ? seasonName(mSeason) : mItem.name;
         Toast.makeText(this, what + " marked " + (watched ? "watched" : "unwatched")

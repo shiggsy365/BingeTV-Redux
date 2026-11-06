@@ -30,18 +30,8 @@ public final class Metas {
      */
     public static Found fetch(StremioClient client, AddonStore store, String type, String id)
             throws StremioException {
-        List<String[]> candidates = new ArrayList<>();
-        for (AddonStore.Addon a : store.addonsFor("meta", type, id)) {
-            candidates.add(new String[]{a.manifest.name, a.transportUrl});
-        }
-        boolean askedCinemeta = false;
-        for (String[] c : candidates) if (c[1].equals(CINEMETA_URL)) askedCinemeta = true;
-        if (!askedCinemeta && (type.equals("movie") || type.equals("series"))
-                && id.startsWith("tt")) {
-            candidates.add(new String[]{"Cinemeta", CINEMETA_URL});
-        }
         List<String> errors = new ArrayList<>();
-        for (String[] c : candidates) {
+        for (String[] c : candidates(store, type, id)) {
             try {
                 JSONObject data = client.resource(c[1], "meta", type, id, null, TTL_MS);
                 MetaItem meta = MetaItem.full(data.optJSONObject("meta"), type);
@@ -53,5 +43,33 @@ public final class Metas {
         }
         throw new StremioException("No details found for this title"
                 + (errors.isEmpty() ? "" : " (" + String.join("; ", errors) + ")"));
+    }
+
+    /**
+     * What {@link #fetch} would find in the cache alone (fresh or not), without asking any
+     * addon; null if nothing's cached.
+     */
+    public static Found cached(StremioClient client, AddonStore store, String type, String id) {
+        for (String[] c : candidates(store, type, id)) {
+            ResponseCache.Hit hit = client.peek(c[1], "meta", type, id, null);
+            MetaItem meta = hit == null ? null : MetaItem.full(hit.data.optJSONObject("meta"), type);
+            if (meta != null) return new Found(meta, c[0]);
+        }
+        return null;
+    }
+
+    // The addons to ask, in order: names and transport URLs.
+    private static List<String[]> candidates(AddonStore store, String type, String id) {
+        List<String[]> candidates = new ArrayList<>();
+        for (AddonStore.Addon a : store.addonsFor("meta", type, id)) {
+            candidates.add(new String[]{a.manifest.name, a.transportUrl});
+        }
+        boolean askedCinemeta = false;
+        for (String[] c : candidates) if (c[1].equals(CINEMETA_URL)) askedCinemeta = true;
+        if (!askedCinemeta && (type.equals("movie") || type.equals("series"))
+                && id.startsWith("tt")) {
+            candidates.add(new String[]{"Cinemeta", CINEMETA_URL});
+        }
+        return candidates;
     }
 }

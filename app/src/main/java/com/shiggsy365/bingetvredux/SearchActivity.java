@@ -45,7 +45,6 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
     private TextView mStatus;
     private CatalogRows mRows;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private final Background.Tasks mExecutor = new Background.Tasks(1);
     private String mSearched = "";
     private int mGeneration;
     private final Runnable mSearch = this::search;
@@ -70,8 +69,6 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
         mRows = new CatalogRows(this, findViewById(R.id.rows), this);
         mChips = findViewById(R.id.chips);
         mChipsScroll = findViewById(R.id.chips_scroll);
-        ((android.view.ViewGroup) findViewById(R.id.rows)).setLayoutAnimation(
-                android.view.animation.AnimationUtils.loadLayoutAnimation(this, R.anim.search_rows_in));
         if (Stremio.addons(this).searchCatalogs().isEmpty()) {
             mStatus.setText("None of your addons can search. Turn on search catalogs on the "
                     + "web page's Catalogs tab.");
@@ -299,7 +296,6 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
     @Override
     protected void onDestroy() {
         mRows.destroy();
-        mExecutor.shutdownNow();
         mSuggestions.shutdownNow();
         mHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
@@ -317,50 +313,33 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
             return;
         }
         mStatus.setText("Searching for “" + query + "”…");
-        mExecutor.execute(() -> {
-            List<Catalogs.SearchResult> raw = Catalogs.search(Stremio.client(this), entries, query);
-            // Podcasts and radio stations too, unless the profile has them off (not for people).
-            List<MetaItem> podcasts = new ArrayList<>(), stations = new ArrayList<>();
-            if (!mPerson && Settings.bool(this, Settings.PODCASTS_PAGE)) {
-                try {
-                    podcasts = Podcasts.podcastMetas(Podcasts.search(this, query));
-                } catch (java.io.IOException e) {
-                    // Films and shows still show.
-                }
-            }
-            if (!mPerson && Settings.bool(this, Settings.RADIO)) {
-                try {
-                    stations = Radio.toMetas(Radio.search(query));
-                } catch (java.io.IOException e) {
-                    // As above.
-                }
-            }
-            List<MetaItem> foundPodcasts = podcasts, foundStations = stations;
-            // Each result with the first metadata addon's details (a Cinemeta search shows
-            // AIOMetadata's posters and text, if it's above Cinemeta).
-            List<Catalogs.SearchResult> results = new ArrayList<>();
-            for (Catalogs.SearchResult r : raw) {
-                results.add(r.items.isEmpty() || !PreferredMetas.needed(this, r.entry.addon, r.items) ? r
-                        : r.withItems(PreferredMetas.fetch(this, r.entry.addon, r.items)));
-            }
-            runOnUiThread(() -> {
-                if (isDestroyed() || generation != mGeneration) return;
-                List<CatalogRows.Row> rows = new ArrayList<>();
-                int found = 0;
-                for (Catalogs.SearchResult r : results) {
-                    if (r.items.isEmpty()) continue;
-                    found += r.items.size();
-                    rows.add(new CatalogRows.Row(title(r.entry), r.items));
-                }
-                if (!foundPodcasts.isEmpty()) rows.add(new CatalogRows.Row("Podcasts", foundPodcasts));
-                if (!foundStations.isEmpty()) rows.add(new CatalogRows.Row("Radio stations", foundStations));
-                found += foundPodcasts.size() + foundStations.size();
-                mRows.setRows(rows);
-                // The rows arrive one after another.
-                ((android.view.ViewGroup) findViewById(R.id.rows)).scheduleLayoutAnimation();
-                mStatus.setText(found == 0 ? "Nothing found for “" + query + "”" : "");
-            });
+        // A row for each search catalog, then podcasts and radio stations (unless the profile
+        // has them off; not for people), each shown as soon as its answer comes.
+        Context app = getApplicationContext();
+        List<CatalogRows.Row> rows = new ArrayList<>();
+        for (AddonStore.Entry e : entries) {
+            // With the first metadata addon's details (a Cinemeta search shows AIOMetadata's
+            // posters and text, if it's above Cinemeta): those cached at once, the rest after.
+            rows.add(new CatalogRows.Row(title(e), () -> PreferredMetas.fromCache(app, e.addon,
+                    Catalogs.search(Stremio.client(app), e, query)))
+                    .then(items -> PreferredMetas.needed(app, e.addon, items)
+                            ? PreferredMetas.fetch(app, e.addon, items) : items)
+                    .loadNow());
+        }
+        if (!mPerson && Settings.bool(this, Settings.PODCASTS_PAGE)) {
+            rows.add(new CatalogRows.Row("Podcasts",
+                    () -> Podcasts.podcastMetas(Podcasts.search(app, query))).loadNow());
+        }
+        if (!mPerson && Settings.bool(this, Settings.RADIO)) {
+            rows.add(new CatalogRows.Row("Radio stations",
+                    () -> Radio.toMetas(Radio.search(query))).loadNow());
+        }
+        mRows.setOnChanged(() -> {
+            if (generation != mGeneration) return;
+            if (mRows.shownCount() > 0) mStatus.setText("");
+            else if (mRows.allLoaded()) mStatus.setText("Nothing found for “" + query + "”");
         });
+        mRows.setRows(rows);
     }
 
     /** The search catalogs; for a person, only the people-search ones if there are any. */
