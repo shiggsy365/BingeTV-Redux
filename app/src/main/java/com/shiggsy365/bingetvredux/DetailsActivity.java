@@ -181,10 +181,6 @@ public class DetailsActivity extends Activity {
             });
         }
         mPlay.requestFocus();
-        // Down from the buttons goes to the season tabs (when there are any), not past them.
-        for (View button : new View[]{mPlay, mStreams, mStartOver, mWatched, mRemove, mWatchlist, mTrailer}) {
-            button.setNextFocusDownId(R.id.seasons);
-        }
         // A picked episode stays picked going up through the tabs to the buttons; coming down
         // onto the tabs, or anywhere else, it's the season (or title) again.
         View actions = findViewById(R.id.actions);
@@ -325,6 +321,11 @@ public class DetailsActivity extends Activity {
             // A show with one season has no tabs: its episodes sit under "Episodes".
             boolean one = mSeasonNumbers.size() == 1;
             mSeasons.setVisibility(one ? View.GONE : View.VISIBLE);
+            // Down from the buttons goes to the season tabs, not past them. Only when they're
+            // shown: hidden (a film's page) they'd still be picked, and the focus would stay put.
+            for (View button : new View[]{mPlay, mStreams, mStartOver, mWatched, mRemove, mWatchlist, mTrailer}) {
+                button.setNextFocusDownId(one ? View.NO_ID : R.id.seasons);
+            }
             mSeasonsHeading.setText(one ? "Episodes" : "Seasons");
             mSeasons.setAdapter(new SeasonAdapter());
         }
