@@ -55,7 +55,7 @@
                 android:textColor="@color/guide_muted"
                 android:textSize="14sp" />
 
-            <!-- Subscribe, Mark listened, Hide/Show played; the hint names the focused one -->
+            <!-- Subscribe and Mark listened; the hint names the focused one -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="33dp"
@@ -75,12 +75,6 @@
                     style="@style/InfoRoundButton"
                     android:contentDescription="Mark all listened"
                     android:src="@drawable/ic_watched" />
-
-                <ImageView
-                    android:id="@+id/hide_played"
-                    style="@style/InfoRoundButton"
-                    android:contentDescription="Hide played"
-                    android:src="@drawable/ic_hide" />
 
                 <TextView
                     android:id="@+id/hint"

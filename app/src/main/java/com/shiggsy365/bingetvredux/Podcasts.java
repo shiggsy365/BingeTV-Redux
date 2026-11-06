@@ -266,16 +266,6 @@ final class Podcasts {
         PodcastSync.played(context, profile, items, places);
     }
 
-    /** The episodes not marked played. */
-    static List<AudioPlayer.Item> unplayed(Context context, List<AudioPlayer.Item> episodes) {
-        List<AudioPlayer.Item> out = new ArrayList<>();
-        for (AudioPlayer.Item e : episodes) {
-            Progress p = progress(context, e.id);
-            if (p == null || !p.played) out.add(e);
-        }
-        return out;
-    }
-
     /** Episodes started and not finished, most recent first. */
     static List<AudioPlayer.Item> inProgress(Context context) {
         JSONObject all = progressJson(context, Profiles.current(context).id);
@@ -329,7 +319,6 @@ final class Podcasts {
             for (int i = 0; i < Math.min(5, r.value.episodes.size()); i++) all.add(r.value.episodes.get(i));
         }
         all.sort((a, b) -> Long.compare(b.published, a.published));
-        if (Settings.bool(context, Settings.HIDE_PLAYED_EPISODES)) all = unplayed(context, all);
         return all.size() > LATEST_MAX ? new ArrayList<>(all.subList(0, LATEST_MAX)) : all;
     }
 

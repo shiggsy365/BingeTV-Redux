@@ -53,7 +53,6 @@ const PROFILE_SETTINGS = [
   ]},
   {page: 'podcasts', title: 'Podcasts', fields: [
     {key: 'podcastsPage', label: 'Podcasts on the TV\'s menu bar (and podcasts in Search)', type: 'check'},
-    {key: 'hidePlayedEpisodes', label: 'Hide played episodes (on a podcast\'s page and in Latest episodes)', type: 'check'},
   ]},
   {page: 'podcasts', title: 'Sync server', help: 'A gPodder-compatible server, such as oPodSync or Nextcloud\'s gPodder Sync: your subscriptions and where you are in each episode stay in step with other podcast apps (AntennaPod and the like). It syncs when the Podcasts page opens and after listening.', podsync: true, fields: [
     {key: 'podcastSyncUrl', label: 'Server address', type: 'text', placeholder: 'https://podcasts.example.com'},
