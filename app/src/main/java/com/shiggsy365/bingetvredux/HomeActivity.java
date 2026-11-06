@@ -11,6 +11,7 @@ import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.leanback.widget.VerticalGridView;
 
@@ -220,6 +221,10 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
             startActivity(new Intent(this, SearchActivity.class));
             return true;
         }
+        // Menu on a podcast episode marks it played, or not, as on the podcast's own page.
+        if (keyCode == KeyEvent.KEYCODE_MENU && mRowsView.hasFocus() && togglePlayed(mRows.focusedItem())) {
+            return true;
+        }
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             // Back goes up to the menu, then Home, then leaves.
             if (mRowsView.hasFocus()) {
@@ -233,6 +238,19 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
             }
         }
         return super.onKeyDown(keyCode, event);
+    }
+
+    private boolean togglePlayed(MetaItem item) {
+        if (item == null || !item.id.startsWith(Podcasts.EPISODE_PREFIX)) return false;
+        AudioPlayer.Item episode = Podcasts.episode(item.id);
+        if (episode == null) return false;
+        Podcasts.Progress now = Podcasts.progress(this, episode.id);
+        boolean played = now == null || !now.played;
+        Podcasts.setPlayed(this, episode, played);
+        PodcastSync.pushSoon(this);
+        Toast.makeText(this, played ? "Marked as played" : "Marked as not played", Toast.LENGTH_SHORT).show();
+        mRows.reload(AudioRows.CHANGING);
+        return true;
     }
 
     // ---- Menu ----

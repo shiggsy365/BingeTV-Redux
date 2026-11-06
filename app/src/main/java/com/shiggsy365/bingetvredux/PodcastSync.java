@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -94,22 +95,36 @@ final class PodcastSync {
     }
 
     /** Where an episode was left, for the server (the latest per episode is kept). */
-    static synchronized void played(Context context, String profileId, AudioPlayer.Item item,
+    static void played(Context context, String profileId, AudioPlayer.Item item,
             long positionMs, long durationMs) {
-        if (!configured(context, profileId) || item.feedUrl.isEmpty()) return;
+        played(context, profileId, Collections.singletonList(item),
+                new long[][] {{positionMs, durationMs}});
+    }
+
+    /** Several episodes at once: {@code places[i]} is item i's position and duration. */
+    static synchronized void played(Context context, String profileId, List<AudioPlayer.Item> items,
+            long[][] places) {
+        if (!configured(context, profileId)) return;
         JSONObject state = state(context, profileId);
         try {
+            Set<String> ids = new HashSet<>();
+            for (AudioPlayer.Item item : items) ids.add(item.id);
             JSONArray actions = list(state, "pendingActions");
             JSONArray kept = new JSONArray();
             for (int i = 0; i < actions.length(); i++) {
                 JSONObject a = actions.getJSONObject(i);
-                if (!a.optString("episode").equals(item.id)) kept.put(a);
+                if (!ids.contains(a.optString("episode"))) kept.put(a);
             }
-            long position = positionMs / 1000;
-            long total = Math.max(position, durationMs / 1000);
-            kept.put(new JSONObject().put("podcast", item.feedUrl).put("episode", item.id)
-                    .put("action", "play").put("timestamp", timestamp(System.currentTimeMillis()))
-                    .put("started", position).put("position", position).put("total", total));
+            String when = timestamp(System.currentTimeMillis());
+            for (int i = 0; i < items.size(); i++) {
+                AudioPlayer.Item item = items.get(i);
+                if (item.feedUrl.isEmpty()) continue;
+                long position = places[i][0] / 1000;
+                long total = Math.max(position, places[i][1] / 1000);
+                kept.put(new JSONObject().put("podcast", item.feedUrl).put("episode", item.id)
+                        .put("action", "play").put("timestamp", when)
+                        .put("started", position).put("position", position).put("total", total));
+            }
             state.put("pendingActions", kept);
             saveState(context, profileId, state);
         } catch (JSONException e) {

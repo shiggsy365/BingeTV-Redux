@@ -22,17 +22,26 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A podcast's page: its artwork, notes and Subscribe on the left, its episodes on the right,
- * newest first. OK plays an episode (from where it was left); Menu marks it played or not.
+ * A podcast's page: its artwork, notes and round buttons on the left (Subscribe, Mark listened,
+ * and Hide played, a profile setting that Latest episodes follows too), its episodes on the
+ * right, newest first. OK plays an episode (from where it was left). Mark listened (or Menu on
+ * an episode) marks the picked episode played or not: the one last focused, which stays
+ * highlighted while the buttons have the focus.
  */
 public class PodcastActivity extends Activity {
     private static final String EXTRA_FEED = "feed";
 
     private String mFeedUrl;
     private Podcasts.Feed mFeed;
-    private TextView mSubscribe, mStatus;
+    private ImageView mSubscribe, mListened, mHidePlayed;
+    private TextView mHint, mStatus;
+    // The feed's episodes, and those shown (without played ones, if they're hidden).
+    private final List<AudioPlayer.Item> mAll = new ArrayList<>();
     private final List<AudioPlayer.Item> mEpisodes = new ArrayList<>();
     private final EpisodeAdapter mAdapter = new EpisodeAdapter();
+    private VerticalGridView mList;
+    // The episode Mark listened is for (null: none shown).
+    private AudioPlayer.Item mPicked;
     private final Background.Tasks mTasks = new Background.Tasks(1);
 
     static Intent intent(Context context, String feedUrl) {
@@ -50,19 +59,33 @@ public class PodcastActivity extends Activity {
         }
         mSubscribe = findViewById(R.id.subscribe);
         mStatus = findViewById(R.id.status);
+        mListened = findViewById(R.id.listened);
+        mHidePlayed = findViewById(R.id.hide_played);
+        mHint = findViewById(R.id.hint);
+        mListened.setOnClickListener(v -> {
+            if (mPicked != null) togglePlayed(mPicked);
+        });
+        mHidePlayed.setOnClickListener(v -> {
+            Settings.putBool(this, Settings.HIDE_PLAYED_EPISODES, !hidePlayed());
+            showEpisodes();
+        });
+        for (View button : new View[] {mSubscribe, mListened, mHidePlayed}) {
+            button.setOnFocusChangeListener((v, focused) -> showButtons());
+        }
+        showButtons();
         ((ImageView) findViewById(R.id.artwork)).setClipToOutline(true);
         VerticalGridView list = findViewById(R.id.episodes);
+        mList = list;
         list.setAdapter(mAdapter);
         list.setVerticalSpacing(Math.round(4 * getResources().getDisplayMetrics().density));
         // What's known before the feed arrives (from the card that opened it).
         Podcasts.Podcast known = Podcasts.podcast(Podcasts.PODCAST_PREFIX + mFeedUrl);
         if (known != null) showPodcast(known);
-        showSubscribed();
         mSubscribe.setOnClickListener(v -> {
             Podcasts.Podcast p = mFeed != null ? mFeed.podcast : known;
             if (p == null) return;
             boolean now = Podcasts.toggleSubscription(this, p);
-            showSubscribed();
+            showButtons();
             Toast.makeText(this, now ? "Subscribed to " + p.title : "Unsubscribed", Toast.LENGTH_SHORT).show();
         });
         mSubscribe.requestFocus();
@@ -73,7 +96,7 @@ public class PodcastActivity extends Activity {
     protected void onResume() {
         super.onResume();
         // Back from Now Playing: what's been played since.
-        mAdapter.notifyDataSetChanged();
+        if (mFeed != null) showEpisodes();
     }
 
     @Override
@@ -101,13 +124,97 @@ public class PodcastActivity extends Activity {
                 }
                 mFeed = loaded;
                 showPodcast(loaded.podcast);
-                mEpisodes.clear();
-                mEpisodes.addAll(loaded.episodes);
-                mAdapter.notifyDataSetChanged();
-                mStatus.setText(mEpisodes.isEmpty() ? "No episodes" : mEpisodes.size() + " episodes"
-                        + "   ·   Menu: mark played");
+                mAll.clear();
+                mAll.addAll(loaded.episodes);
+                showEpisodes();
             });
         });
+    }
+
+    private boolean hidePlayed() {
+        return Settings.bool(this, Settings.HIDE_PLAYED_EPISODES);
+    }
+
+    /** Each button's icon and colour for its state, and the focused one's name as the hint. */
+    private void showButtons() {
+        boolean subscribed = Podcasts.isSubscribed(this, mFeedUrl);
+        boolean listened = mPicked != null && isPlayed(mPicked);
+        mSubscribe.setImageResource(subscribed ? R.drawable.ic_subscribed : R.drawable.ic_subscribe);
+        mSubscribe.setContentDescription(subscribed ? "Unsubscribe" : "Subscribe");
+        tint(mSubscribe, subscribed);
+        mListened.setContentDescription(listened ? "Mark unlistened" : "Mark listened");
+        tint(mListened, listened);
+        mHidePlayed.setImageResource(hidePlayed() ? R.drawable.ic_show : R.drawable.ic_hide);
+        mHidePlayed.setContentDescription(hidePlayed() ? "Show played" : "Hide played");
+        View focused = getCurrentFocus();
+        mHint.setText(focused == mSubscribe || focused == mListened || focused == mHidePlayed
+                ? focused.getContentDescription() : "");
+    }
+
+    /** Red when on (as on the info page), white while focused (the button itself is red then). */
+    private void tint(ImageView button, boolean on) {
+        button.setImageTintList(android.content.res.ColorStateList.valueOf(
+                on && !button.hasFocus() ? getColor(R.color.guide_accent) : 0xFFFFFFFF));
+    }
+
+    private boolean isPlayed(AudioPlayer.Item episode) {
+        Podcasts.Progress p = Podcasts.progress(this, episode.id);
+        return p != null && p.played;
+    }
+
+    /** Marks an episode played, or not; with played ones hidden, it leaves the list. */
+    private void togglePlayed(AudioPlayer.Item episode) {
+        boolean played = !isPlayed(episode);
+        Podcasts.setPlayed(this, episode, played);
+        PodcastSync.pushSoon(this);
+        int at = mEpisodes.indexOf(episode);
+        if (played && hidePlayed() && at >= 0) {
+            boolean hadFocus = mList.hasFocus();
+            mEpisodes.remove(at);
+            mAdapter.notifyItemRemoved(at);
+            // The next one down (or up, at the end) is picked instead.
+            pick(mEpisodes.isEmpty() ? null : mEpisodes.get(Math.min(at, mEpisodes.size() - 1)));
+            if (hadFocus && mPicked != null) mList.setSelectedPosition(mEpisodes.indexOf(mPicked));
+            showCount();
+        } else if (at >= 0) {
+            mAdapter.notifyItemChanged(at);
+        }
+        showButtons();
+    }
+
+    /** Picks an episode for Mark listened, highlighting its row in place of the last one. */
+    private void pick(AudioPlayer.Item episode) {
+        if (episode == mPicked) return;
+        AudioPlayer.Item old = mPicked;
+        mPicked = episode;
+        for (AudioPlayer.Item e : new AudioPlayer.Item[] {old, episode}) {
+            int at = e == null ? -1 : mEpisodes.indexOf(e);
+            RecyclerView.ViewHolder h = at < 0 ? null : mList.findViewHolderForAdapterPosition(at);
+            if (h != null) h.itemView.setSelected(e == mPicked);
+        }
+        showButtons();
+    }
+
+    private void showEpisodes() {
+        mEpisodes.clear();
+        mEpisodes.addAll(hidePlayed() ? Podcasts.unplayed(this, mAll) : mAll);
+        mAdapter.notifyDataSetChanged();
+        // The picked episode if it's still shown, else the first.
+        if (mPicked == null || !mEpisodes.contains(mPicked)) {
+            mPicked = null;
+            pick(mEpisodes.isEmpty() ? null : mEpisodes.get(0));
+        }
+        showButtons();
+        showCount();
+    }
+
+    private void showCount() {
+        int hidden = mAll.size() - mEpisodes.size();
+        mStatus.setText((mAll.isEmpty() ? "No episodes"
+                : mEpisodes.isEmpty() ? "No unplayed episodes"
+                : mEpisodes.size() + " episodes")
+                + (hidden > 0 ? " (" + hidden + " played hidden)" : "")
+                + "   ·   Menu: mark played");
     }
 
     private void showPodcast(Podcasts.Podcast p) {
@@ -116,10 +223,6 @@ public class PodcastActivity extends Activity {
         ((TextView) findViewById(R.id.notes)).setText(p.description);
         Images.load(findViewById(R.id.artwork), p.artwork);
         Images.fadeSoft(findViewById(R.id.backdrop), p.artwork);
-    }
-
-    private void showSubscribed() {
-        mSubscribe.setText(Podcasts.isSubscribed(this, mFeedUrl) ? "✓  Subscribed" : "+  Subscribe");
     }
 
     private void play(AudioPlayer.Item episode) {
@@ -149,16 +252,14 @@ public class PodcastActivity extends Activity {
             bar.setVisibility(started ? View.VISIBLE : View.GONE);
             if (started) bar.setProgress((int) (p.positionMs * 1000 / p.durationMs));
             v.setAlpha(p != null && p.played ? 0.6f : 1f);
+            v.setSelected(e == mPicked);
             v.setOnClickListener(x -> play(e));
+            v.setOnFocusChangeListener((x, focused) -> {
+                if (focused) pick(e);
+            });
             v.setOnKeyListener((x, keyCode, event) -> {
                 if (keyCode != KeyEvent.KEYCODE_MENU) return false;
-                if (event.getAction() == KeyEvent.ACTION_UP) {
-                    Podcasts.Progress now = Podcasts.progress(PodcastActivity.this, e.id);
-                    boolean played = now == null || !now.played;
-                    Podcasts.setPlayed(PodcastActivity.this, e, played);
-                    notifyItemChanged(holder.getBindingAdapterPosition());
-                    PodcastSync.pushSoon(PodcastActivity.this);
-                }
+                if (event.getAction() == KeyEvent.ACTION_UP) togglePlayed(e);
                 return true;
             });
         }

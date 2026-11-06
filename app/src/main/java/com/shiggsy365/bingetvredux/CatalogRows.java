@@ -160,6 +160,11 @@ public final class CatalogRows {
         for (Row r : rows) if (r.now) load(r);
     }
 
+    /** The card last focused in the rows (whether or not the rows still have the focus). */
+    public MetaItem focusedItem() {
+        return mFocused;
+    }
+
     /** A random item of the first row that has any; null if none has loaded yet. */
     public MetaItem randomFirstItem() {
         for (Row r : mShown) {

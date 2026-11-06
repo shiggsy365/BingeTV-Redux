@@ -41,7 +41,8 @@ final class Podcasts {
     private static final String TAG = "Podcasts";
     static final String PODCAST_PREFIX = "podcast:", EPISODE_PREFIX = "podep:";
     private static final long FEED_TTL_MS = 20 * 60_000L;
-    private static final int PROGRESS_MAX = 400;
+    // Played entries are small (no episode details), and go first when there are too many.
+    private static final int PROGRESS_MAX = 2000;
     private static final int LATEST_MAX = 40;
     // Under this, an episode hasn't really been started (for Continue listening).
     private static final long STARTED_MS = 30_000;
@@ -202,12 +203,7 @@ final class Podcasts {
             long positionMs, long durationMs, boolean played, long updated) {
         JSONObject all = progressJson(context, profileId);
         try {
-            JSONObject entry = new JSONObject().put("pos", positionMs).put("dur", durationMs)
-                    .put("played", played).put("ts", updated);
-            JSONObject old = all.optJSONObject(item.id);
-            JSONObject about = item.title.isEmpty() && old != null ? old.optJSONObject("item") : item.toJson();
-            if (about != null) entry.put("item", about);
-            all.put(item.id, entry);
+            put(all, item, positionMs, durationMs, played, updated);
             trim(all);
             Settings.putData(context, profileId, Settings.PODCAST_PROGRESS, all.toString());
         } catch (JSONException e) {
@@ -215,23 +211,69 @@ final class Podcasts {
         }
     }
 
-    /** Keeps the most recently changed entries. */
+    private static void put(JSONObject all, AudioPlayer.Item item, long positionMs, long durationMs,
+            boolean played, long updated) throws JSONException {
+        JSONObject entry = new JSONObject().put("pos", positionMs).put("dur", durationMs)
+                .put("played", played).put("ts", updated);
+        // The episode's details are only needed for Continue listening.
+        if (!played) {
+            JSONObject old = all.optJSONObject(item.id);
+            JSONObject about = item.title.isEmpty() && old != null ? old.optJSONObject("item") : item.toJson();
+            if (about != null) entry.put("item", about);
+        }
+        all.put(item.id, entry);
+    }
+
+    /** Keeps the most recently changed entries, dropping played ones first. */
     private static void trim(JSONObject all) {
         if (all.length() <= PROGRESS_MAX) return;
         List<String> keys = new ArrayList<>();
         for (Iterator<String> it = all.keys(); it.hasNext(); ) keys.add(it.next());
-        keys.sort((a, b) -> Long.compare(all.optJSONObject(a).optLong("ts"), all.optJSONObject(b).optLong("ts")));
+        keys.sort((a, b) -> {
+            JSONObject x = all.optJSONObject(a), y = all.optJSONObject(b);
+            int byPlayed = Boolean.compare(y.optBoolean("played"), x.optBoolean("played"));
+            return byPlayed != 0 ? byPlayed : Long.compare(x.optLong("ts"), y.optLong("ts"));
+        });
         for (int i = 0; i < keys.size() - PROGRESS_MAX; i++) all.remove(keys.get(i));
     }
 
     /** Marks an episode played, or not (from its page). */
     static void setPlayed(Context context, AudioPlayer.Item item, boolean played) {
+        setPlayed(context, java.util.Collections.singletonList(item), played);
+    }
+
+    /** Marks episodes played, or not (e.g. a whole podcast), in one go. */
+    static synchronized void setPlayed(Context context, List<AudioPlayer.Item> items, boolean played) {
         String profile = Profiles.current(context).id;
-        Progress old = progress(context, item.id);
-        long duration = old != null ? old.durationMs : item.durationS * 1000;
-        long position = played ? duration : 0;
-        putProgress(context, profile, item, position, duration, played, System.currentTimeMillis());
-        PodcastSync.played(context, profile, item, position, duration);
+        JSONObject all = progressJson(context, profile);
+        long now = System.currentTimeMillis();
+        long[][] places = new long[items.size()][];
+        try {
+            for (int i = 0; i < items.size(); i++) {
+                AudioPlayer.Item item = items.get(i);
+                JSONObject old = all.optJSONObject(item.id);
+                long duration = old != null ? old.optLong("dur") : item.durationS * 1000;
+                long position = played ? duration : 0;
+                places[i] = new long[] {position, duration};
+                put(all, item, position, duration, played, now);
+            }
+            trim(all);
+            Settings.putData(context, profile, Settings.PODCAST_PROGRESS, all.toString());
+        } catch (JSONException e) {
+            Log.w(TAG, "Saving progress: " + e.getMessage());
+            return;
+        }
+        PodcastSync.played(context, profile, items, places);
+    }
+
+    /** The episodes not marked played. */
+    static List<AudioPlayer.Item> unplayed(Context context, List<AudioPlayer.Item> episodes) {
+        List<AudioPlayer.Item> out = new ArrayList<>();
+        for (AudioPlayer.Item e : episodes) {
+            Progress p = progress(context, e.id);
+            if (p == null || !p.played) out.add(e);
+        }
+        return out;
     }
 
     /** Episodes started and not finished, most recent first. */
@@ -287,6 +329,7 @@ final class Podcasts {
             for (int i = 0; i < Math.min(5, r.value.episodes.size()); i++) all.add(r.value.episodes.get(i));
         }
         all.sort((a, b) -> Long.compare(b.published, a.published));
+        if (Settings.bool(context, Settings.HIDE_PLAYED_EPISODES)) all = unplayed(context, all);
         return all.size() > LATEST_MAX ? new ArrayList<>(all.subList(0, LATEST_MAX)) : all;
     }
 

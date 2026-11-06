@@ -57,6 +57,8 @@ public final class Settings {
     /** Radio and Podcasts on the menu bar. */
     public static final String RADIO = "radio";
     public static final String PODCASTS_PAGE = "podcastsPage";
+    // Played episodes left out of a podcast's page and Latest episodes.
+    public static final String HIDE_PLAYED_EPISODES = "hidePlayedEpisodes";
     /** Radio's country for its top stations (two letters; empty: the device's). */
     public static final String RADIO_COUNTRY = "radioCountry";
     /** A gPodder-compatible server (oPodSync, Nextcloud gPodder) that keeps podcasts in sync. */
@@ -103,6 +105,7 @@ public final class Settings {
         DEFAULTS.put(ROW_ON_NOW, false);
         DEFAULTS.put(RADIO, true);
         DEFAULTS.put(PODCASTS_PAGE, true);
+        DEFAULTS.put(HIDE_PLAYED_EPISODES, false);
         DEFAULTS.put(RADIO_COUNTRY, "");
         DEFAULTS.put(PODCAST_SYNC_URL, "");
         DEFAULTS.put(PODCAST_SYNC_USER, "");
@@ -145,6 +148,10 @@ public final class Settings {
 
     public static int integer(Context context, String profileId, String key) {
         return prefs(context, profileId).getInt(key, (Integer) DEFAULTS.get(key));
+    }
+
+    public static void putBool(Context context, String key, boolean value) {
+        prefs(context).edit().putBoolean(key, value).apply();
     }
 
     public static void putString(Context context, String key, String value) {
