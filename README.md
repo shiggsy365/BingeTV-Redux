@@ -131,6 +131,10 @@ The live TV side started from Amazon's
 from it keeps its Apache 2.0 licence and notices (see [LICENSE-APACHE-2.0](LICENSE-APACHE-2.0) and
 [NOTICE](NOTICE)).
 
+Automatic subtitle sync (`SubtitleAlign.java` and `SubtitleSync.java`) is ported from
+[AIOStreams](https://github.com/Viren070/AIOStreams), and those files keep its AGPL-3.0 licence
+(see [LICENSE-AGPL-3.0](LICENSE-AGPL-3.0)).
+
 ## Credits
 
 Playback uses Media3 ExoPlayer with FFmpeg audio decoders from

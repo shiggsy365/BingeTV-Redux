@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One choice in a sectioned menu: a tick when it's the current one, its name, then details. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="42dp"
+    android:background="@drawable/choice_row"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="16dp"
+    android:paddingEnd="20dp">
+
+    <ImageView
+        android:id="@+id/choice_tick"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_marginEnd="10dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/ic_choice_tick"
+        android:tint="@color/choice_tick" />
+
+    <TextView
+        android:id="@+id/choice_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:singleLine="true"
+        android:textColor="@color/guide_text"
+        android:textSize="16sp" />
+
+    <TextView
+        android:id="@+id/choice_detail"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:ellipsize="end"
+        android:maxWidth="230dp"
+        android:singleLine="true"
+        android:textColor="@color/choice_detail"
+        android:textSize="14sp" />
+</LinearLayout>

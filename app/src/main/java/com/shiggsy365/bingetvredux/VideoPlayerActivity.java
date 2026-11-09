@@ -263,6 +263,7 @@ public class VideoPlayerActivity extends Activity {
         mFrameRate = FrameRateMatcher.attachBeforePlay(this, mPlayer,
                 findViewById(R.id.frame_rate_cover));
         mPlayer.setTrackSelectionParameters(trackPrefs(mPlayer.getTrackSelectionParameters()));
+        mSubtitles.setStream(stream);
         mSubtitles.attach(mPlayer);
         mSubtitlesChosen = false;
         mPlayer.addListener(new Player.Listener() {
@@ -358,13 +359,20 @@ public class VideoPlayerActivity extends Activity {
     /** Whether a track's language (any ISO 639 form) is one of {@code languages} (ISO 639-2). */
     private static boolean matches(String language, List<String> languages) {
         if (language == null || language.isEmpty()) return false;
-        String code;
+        return languages.contains(iso3(language));
+    }
+
+    /** Whether two tracks' languages (any ISO 639 form) are the same one. */
+    static boolean sameLanguage(String a, String b) {
+        return a != null && !a.isEmpty() && b != null && !b.isEmpty() && iso3(a).equals(iso3(b));
+    }
+
+    private static String iso3(String language) {
         try {
-            code = new Locale(language.split("[-_]")[0]).getISO3Language();
+            return new Locale(language.split("[-_]")[0]).getISO3Language();
         } catch (java.util.MissingResourceException e) {
-            code = language.toLowerCase(Locale.ROOT);
+            return language.toLowerCase(Locale.ROOT);
         }
-        return languages.contains(code);
     }
 
     private void failOver(String reason) {

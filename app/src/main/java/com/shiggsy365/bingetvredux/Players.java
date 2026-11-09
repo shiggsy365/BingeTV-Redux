@@ -30,6 +30,7 @@ import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary;
  */
 @OptIn(markerClass = UnstableApi.class)
 public final class Players {
+    private static final int MAX_BUFFER_BYTES = 100 * 1024 * 1024;
     private static boolean sLogged;
 
     private Players() {}
@@ -57,8 +58,12 @@ public final class Players {
                 .setConnectTimeoutMs(15_000)
                 .setReadTimeoutMs(20_000);
         if (headers != null && !headers.isEmpty()) http.setDefaultRequestProperties(headers);
+        // ExoPlayer's own limit for video and audio (141 MB) leaves 4K streams next to nothing
+        // of the Stick's 192 MB Java heap.
         return new ExoPlayer.Builder(context, new RenderersFactory(context))
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(http))
+                .setLoadControl(new DefaultLoadControl.Builder()
+                        .setTargetBufferBytes(MAX_BUFFER_BYTES).build())
                 .build();
     }
 

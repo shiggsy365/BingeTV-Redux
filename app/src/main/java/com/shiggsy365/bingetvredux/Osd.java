@@ -538,38 +538,70 @@ final class Osd {
     private void subtitlesMenu(View anchor, Runnable closed) {
         ExoPlayer player = mHost.player();
         if (player == null || mSubtitles == null) return;
-        List<String> labels = new ArrayList<>();
+        List<ChoiceMenu.Row> rows = new ArrayList<>();
+        // One to a row, null for a heading.
         List<Object> choices = new ArrayList<>();
         int chosen = -1;
         boolean textOn = !player.getTrackSelectionParameters().disabledTrackTypes.contains(C.TRACK_TYPE_TEXT);
-        labels.add("Off");
+        rows.add(ChoiceMenu.Row.choice("Off", ""));
         choices.add("off");
         if (!textOn && mSubtitles.external() == null) chosen = 0;
+        boolean headed = false;
         for (Tracks.Group g : player.getCurrentTracks().getGroups()) {
             if (g.getType() != C.TRACK_TYPE_TEXT) continue;
             for (int i = 0; i < g.length; i++) {
                 if (!g.isTrackSupported(i)) continue;
-                if (textOn && g.isTrackSelected(i) && mSubtitles.external() == null) chosen = labels.size();
-                labels.add(trackLabel(g.getTrackFormat(i), C.TRACK_TYPE_TEXT) + "  ·  in the video");
+                if (!headed) {
+                    headed = true;
+                    rows.add(ChoiceMenu.Row.heading("In the video"));
+                    choices.add(null);
+                }
+                if (textOn && g.isTrackSelected(i) && mSubtitles.external() == null) chosen = rows.size();
+                rows.add(ChoiceMenu.Row.choice(trackLabel(g.getTrackFormat(i), C.TRACK_TYPE_TEXT), ""));
                 choices.add(new Object[]{g, i});
             }
         }
+        if (!mAddonSubtitles.isEmpty()) {
+            rows.add(ChoiceMenu.Row.heading("From addons"));
+            choices.add(null);
+        }
+        // Addons offer several of one language, told apart by number.
+        java.util.Map<String, Integer> sameKind = new java.util.HashMap<>();
         for (com.shiggsy365.bingetvredux.stremio.Subtitles.Track t : mAddonSubtitles) {
-            if (t == mSubtitles.external()) chosen = labels.size();
+            String kind = t.lang + "|" + t.addon;
+            sameKind.put(kind, sameKind.containsKey(kind) ? sameKind.get(kind) + 1 : 1);
+        }
+        java.util.Map<String, Integer> numbered = new java.util.HashMap<>();
+        for (com.shiggsy365.bingetvredux.stremio.Subtitles.Track t : mAddonSubtitles) {
+            if (t == mSubtitles.external()) chosen = rows.size();
             String language = t.lang.isEmpty() ? "" : new Locale(t.lang).getDisplayLanguage(Locale.UK);
-            labels.add((language.isEmpty() ? "Subtitles" : language) + "  ·  " + t.addon);
+            String kind = t.lang + "|" + t.addon;
+            int number = numbered.containsKey(kind) ? numbered.get(kind) + 1 : 1;
+            numbered.put(kind, number);
+            rows.add(ChoiceMenu.Row.choice(language.isEmpty() ? "Subtitles" : language,
+                    t.addon + (sameKind.get(kind) > 1 ? "  ·  " + number : "")));
             choices.add(t);
         }
-        labels.add(String.format(Locale.ROOT, "Offset: %+.1f s", mSubtitles.offsetMs() / 1000f));
+        rows.add(ChoiceMenu.Row.heading("Timing and style"));
+        choices.add(null);
+        if (mSubtitles.canSyncAutomatically()) {
+            rows.add(ChoiceMenu.Row.choice("Sync automatically", ""));
+            choices.add("sync");
+        }
+        String note = mSubtitles.timingNote();
+        rows.add(ChoiceMenu.Row.choice("Offset", String.format(Locale.ROOT, "%+.1f s", mSubtitles.offsetMs() / 1000f)
+                + (note.isEmpty() ? "" : "  ·  " + note)));
         choices.add("offset");
-        labels.add("Style: " + SubtitleStyle.COLOURS[SubtitleStyle.colour(mActivity)] + ", "
+        rows.add(ChoiceMenu.Row.choice("Style", SubtitleStyle.COLOURS[SubtitleStyle.colour(mActivity)] + ", "
                 + SubtitleStyle.SIZES[SubtitleStyle.size(mActivity)].toLowerCase(Locale.ROOT) + ", "
-                + SubtitleStyle.OUTLINES[SubtitleStyle.outline(mActivity)].toLowerCase(Locale.ROOT));
+                + SubtitleStyle.OUTLINES[SubtitleStyle.outline(mActivity)].toLowerCase(Locale.ROOT)));
         choices.add("style");
-        mMenu = ChoiceMenu.show(anchor, "Subtitles", labels, chosen, index -> {
+        mMenu = ChoiceMenu.show(anchor, "Subtitles", rows, chosen, index -> {
             Object c = choices.get(index);
             if ("off".equals(c)) {
                 mSubtitles.off();
+            } else if ("sync".equals(c)) {
+                mSubtitles.syncAutomatically();
             } else if ("offset".equals(c)) {
                 mHandler.post(this::adjustOffset);
             } else if ("style".equals(c)) {
@@ -585,10 +617,16 @@ final class Osd {
                                 ((Tracks.Group) track[0]).getMediaTrackGroup(), (Integer) track[1]))
                         .build());
             }
-        }, closed);
+        }, closed, 470);
     }
 
     // ---- Subtitle offset, adjusted with the picture in view
+
+    private static final int TAP_NONE = 0;
+    private static final int TAP_HEARD = 1;
+    private static final int TAP_SAW = 2;
+    private int mTap;
+    private long mTapAtMs;
 
     private boolean adjustingOffset() {
         View panel = mActivity.findViewById(R.id.offset_panel);
@@ -602,12 +640,42 @@ final class Osd {
         mHandler.removeCallbacks(mHide);
         mRoot.setVisibility(View.GONE);
         mHandler.removeCallbacks(mTick);
-        ((TextView) mActivity.findViewById(R.id.offset_hint)).setText(mSubtitles.external() == null
-                ? "Right / Left: later or earlier by 0.1 s  ·  Up / Down: 0.5 s  ·  OK to keep\n"
-                + "(the video's own subtitles can only be delayed)"
-                : "Right / Left: later or earlier by 0.1 s  ·  Up / Down: 0.5 s  ·  OK to keep");
+        mTap = TAP_NONE;
+        showOffsetHint(null);
         showOffset();
         panel.setVisibility(View.VISIBLE);
+    }
+
+    /** The keys, under {@code status} (null: nothing to say). */
+    private void showOffsetHint(String status) {
+        String keys = "Right / Left: later or earlier by 0.1 s  ·  Up / Down: 0.5 s  ·  OK to keep\n"
+                + "By ear: Rewind when you hear a line, Fast Forward when its subtitle shows";
+        if (mSubtitles.external() == null) keys += "\n(the video's own subtitles can only be delayed)";
+        ((TextView) mActivity.findViewById(R.id.offset_hint)).setText(status == null ? keys : status + "\n" + keys);
+    }
+
+    /** One of a pair of presses, in either order: when a line is heard, and when its subtitle shows. */
+    private void tap(int kind) {
+        ExoPlayer player = mHost.player();
+        if (player == null) return;
+        long at = player.getCurrentPosition();
+        if (mTap == TAP_NONE || mTap == kind) {
+            mTap = kind;
+            mTapAtMs = at;
+            showOffsetHint(kind == TAP_HEARD ? "Now press Fast Forward when that line's subtitle shows"
+                    : "Now press Rewind when that line is spoken");
+            return;
+        }
+        Long delay = SubtitleSync.delayForTaps(mSubtitles.offsetMs(), kind == TAP_HEARD ? at : mTapAtMs,
+                kind == TAP_SAW ? at : mTapAtMs);
+        mTap = TAP_NONE;
+        if (delay == null) {
+            showOffsetHint("Those were too far apart to be one line. Try another line");
+            return;
+        }
+        mSubtitles.setOffsetMs(mSubtitles.external() == null ? Math.max(0, delay) : delay);
+        showOffset();
+        showOffsetHint("Set by ear. Another line refines it");
     }
 
     private void showOffset() {
@@ -624,6 +692,12 @@ final class Osd {
             case KeyEvent.KEYCODE_DPAD_LEFT: step = -100; break;
             case KeyEvent.KEYCODE_DPAD_UP: step = 500; break;
             case KeyEvent.KEYCODE_DPAD_DOWN: step = -500; break;
+            case KeyEvent.KEYCODE_MEDIA_REWIND:
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+                if (event.getRepeatCount() == 0) {
+                    tap(event.getKeyCode() == KeyEvent.KEYCODE_MEDIA_REWIND ? TAP_HEARD : TAP_SAW);
+                }
+                return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_BACK:
