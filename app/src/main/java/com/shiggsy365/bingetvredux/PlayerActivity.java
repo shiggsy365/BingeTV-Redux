@@ -74,6 +74,8 @@ public class PlayerActivity extends Activity {
     private static final long OVERLAY_MS = 5_000;
     private static final long OVERLAY_TICK_MS = 1_000;
     private static final long WATCHDOG_MS = 2_000;
+    // How long a channel waits for live TV's VPN to connect before giving up.
+    private static final long VPN_WAIT_MS = 20_000;
     // A stream that takes longer than this to start counts as failed.
     private static final long START_TIMEOUT_MS = 15_000;
     // Buffering this long while playing counts as a hang.
@@ -318,10 +320,17 @@ public class PlayerActivity extends Activity {
         int source = Sources.sourceOf(streamId);
         int serial = ++mPlaySerial;
         mExecutor.execute(() -> {
-            boolean busy = Connections.busy(getApplicationContext(), source);
+            // With live TV's VPN switched on, nothing plays until it's connected.
+            boolean vpnReady = LiveVpn.awaitReady(getApplicationContext(), VPN_WAIT_MS);
+            boolean busy = vpnReady && Connections.busy(getApplicationContext(), source);
             runOnUiThread(() -> {
                 if (isDestroyed() || serial != mPlaySerial) return;
-                if (busy) {
+                if (!vpnReady) {
+                    String error = LiveVpn.error();
+                    Toast.makeText(this, "Live TV's VPN isn't connected"
+                            + (error != null ? ": " + error : ""), Toast.LENGTH_LONG).show();
+                    finish();
+                } else if (busy) {
                     mAccountBusy = true;
                     failOver("is on an account in use on another TV");
                 } else {
@@ -339,7 +348,7 @@ public class PlayerActivity extends Activity {
         mLastPosition = -1;
         mLastProgressMs = mStreamStartMs;
 
-        mPlayer = Players.build(this);
+        mPlayer = Players.live(this);
 
         mFrameRate = FrameRateMatcher.attach(this, mPlayer, FrameRateMatcher.LIVE);
         mSubtitleDriver.attach(mPlayer);

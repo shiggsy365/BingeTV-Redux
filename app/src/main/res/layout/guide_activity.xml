@@ -44,20 +44,46 @@
         android:paddingEnd="32dp"
         android:paddingTop="18dp">
 
-        <!-- Group chips. -->
-        <HorizontalScrollView
+        <!-- Group chips, and live TV's VPN switch at the right. -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:scrollbars="none">
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-            <LinearLayout
-                android:id="@+id/chips"
+            <HorizontalScrollView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/chips"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:paddingTop="2dp"
+                    android:paddingBottom="2dp" />
+            </HorizontalScrollView>
+
+            <TextView
+                android:id="@+id/vpn_toggle"
+                android:visibility="gone"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingTop="2dp"
-                android:paddingBottom="2dp" />
-        </HorizontalScrollView>
+                android:layout_marginStart="12dp"
+                android:background="@drawable/vpn_chip"
+                android:focusable="true"
+                android:fontFamily="sans-serif-medium"
+                android:nextFocusDown="@+id/grid"
+                android:paddingStart="12dp"
+                android:paddingTop="4dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="4dp"
+                android:singleLine="true"
+                android:textColor="@color/guide_chip_text"
+                android:textSize="13sp" />
+        </LinearLayout>
 
         <!-- Details of the highlighted programme, up to the preview's left edge: the preview
              is 320dp wide at the screen edge, less this layout's 32dp end padding. -->

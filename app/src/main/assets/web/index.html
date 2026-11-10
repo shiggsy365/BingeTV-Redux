@@ -69,6 +69,9 @@
   input[type=text], input[type=password], input[type=url], input[type=search], select {
     background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px;
     width: 100%; }
+  textarea { font: 12px/1.4 ui-monospace, monospace; color: inherit; background: var(--bg);
+             border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; width: 100%;
+             box-sizing: border-box; resize: vertical; }
   input[type=checkbox] { width: 20px; height: 20px; margin: 0; flex: none; cursor: pointer;
                          accent-color: var(--accent); }
   .btn { background: var(--chip); border: 1px solid var(--line); border-radius: 6px;
@@ -434,6 +437,22 @@
       <div class="row" style="margin-top:10px">
         <button class="btn primary" id="srcSave">Add source</button>
         <button class="btn" id="srcCancel" hidden>Cancel</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>VPN for live TV</h2>
+      <p class="muted">A WireGuard config from your VPN provider (Surfshark, Mullvad, Proton,
+        Windscribe and others offer one under manual or router setup). Only live TV's streams
+        go through it: films, series, radio and the rest of the app don't. Switch it on and off
+        with the VPN button at the top right of the TV guide. Android runs one VPN at a time,
+        so it disconnects any other VPN app on the TV.</p>
+      <p id="vpnStatus"></p>
+      <label class="field"><span>Config file</span><input type="file" id="vpnFile" accept=".conf,text/plain"></label>
+      <label class="field"><span>Or paste it</span><textarea id="vpnConfig" rows="8" spellcheck="false" autocomplete="off"
+        placeholder="[Interface]&#10;PrivateKey = …&#10;Address = …&#10;DNS = …&#10;&#10;[Peer]&#10;PublicKey = …&#10;AllowedIPs = 0.0.0.0/0&#10;Endpoint = …"></textarea></label>
+      <div class="row" style="margin-top:10px">
+        <button class="btn primary" id="vpnSave">Save VPN config</button>
+        <button class="btn danger" id="vpnDelete" hidden>Remove</button>
       </div>
     </div>
     <div class="panel">

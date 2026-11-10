@@ -53,6 +53,12 @@ final class LiveApi {
                 return saveSettings(require(body));
             case "/api/categories":
                 return categories(sourceParam(params));
+            case "/api/vpn":
+                LiveVpn.saveConfig(mContext, require(body).optString("config"));
+                return state();
+            case "/api/vpn/delete":
+                LiveVpn.removeConfig(mContext);
+                return state();
             case "/api/sources":
                 return addSource(require(body));
             case "/api/sources/update":
@@ -150,10 +156,26 @@ final class LiveApi {
                 .put("groups", config.groups())
                 .put("sources", sourcesJson(config))
                 .put("guideSources", guideSourcesWithCounts(config))
+                .put("vpn", vpnJson())
                 .put("sync", new JSONObject()
                         .put("running", GuideSync.sSyncRunning)
                         .put("status", GuideSync.sSyncStatus)
                         .put("last", prefs.getLong(XtreamClient.PREF_LAST_SYNC, 0)));
+    }
+
+    /**
+     * Live TV's VPN for the page: whether a config is saved and the server it connects to,
+     * never its keys; and whether it's switched on (on the guide) and connected.
+     */
+    private JSONObject vpnJson() throws JSONException {
+        String endpoint = LiveVpn.endpoint(mContext);
+        String error = LiveVpn.error();
+        return new JSONObject()
+                .put("hasConfig", endpoint != null)
+                .put("endpoint", endpoint != null ? endpoint : "")
+                .put("enabled", LiveVpn.isEnabled(mContext))
+                .put("status", LiveVpn.status().name().toLowerCase(Locale.ROOT))
+                .put("error", error != null ? error : "");
     }
 
     /** Every guide source with its channel count, whether it's off and when sync last read it. */
