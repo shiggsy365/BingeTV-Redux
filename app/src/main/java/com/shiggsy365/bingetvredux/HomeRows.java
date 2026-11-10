@@ -138,7 +138,11 @@ final class HomeRows {
             Metas.Found found = cachedOnly
                     ? Metas.cached(Stremio.client(context), Stremio.addons(context), e.type, id)
                     : Metas.fetch(Stremio.client(context), Stremio.addons(context), e.type, id);
-            if (found != null) meta = found.meta;
+            if (found != null) {
+                meta = found.meta;
+                // The addons know it by another id: its rows move there (see WatchStore.adopt).
+                WatchStore.get(context).adopt(id, meta.id);
+            }
         } catch (StremioException ignored) {
             // What was saved when it was played still makes a card.
         }
@@ -188,7 +192,11 @@ final class HomeRows {
                         : Metas.fetch(Stremio.client(context), Stremio.addons(context), show[1], show[0]);
                 if (found == null) return null;
                 MetaItem meta = found.meta;
-                Video next = next(meta, store.watchedEpisodes(show[0]), today);
+                // The addons know the show by another id: its rows move there (see
+                // WatchStore.adopt), so its info page's watched marks count here.
+                store.adopt(show[0], meta.id);
+                if (store.isDismissed(meta.id)) return null;
+                Video next = next(meta, store.watchedEpisodes(meta.id), today);
                 if (next == null) return null;
                 String what = "Next: " + DetailsActivity.episodeCode(next)
                         + (next.title.isEmpty() ? "" : "  ·  " + next.title);
@@ -196,8 +204,10 @@ final class HomeRows {
             });
         }
         List<Timed> out = new ArrayList<>();
+        // A show stored under two ids (see WatchStore.adopt) comes back once.
+        Set<String> shown = new java.util.HashSet<>();
         for (Parallel.Result<Timed> r : Parallel.run(tasks, NEXT_UP_TIMEOUT_MS)) {
-            if (r.ok() && r.value != null) out.add(r.value);
+            if (r.ok() && r.value != null && shown.add(r.value.item.id)) out.add(r.value);
         }
         return out;
     }

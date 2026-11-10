@@ -66,7 +66,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     private String mPageProfile = "";
     private int mWatchVersion;
     private MetaItem mHeroItem;
-    // The focus has been put on the first card, as the app opened.
+    // The focus has been put on Home on the menu bar, as the app opened.
     private boolean mOpened;
     private View mHero;
     private View mBackdropDim;
@@ -75,6 +75,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     private boolean mMenuMode;
     private static final long MENU_FOCUS_MS = 160;
     private static final long ENTER_ROWS_MS = 120;
+    private static final int MENU_ART_TRIES = 20;
     private View mMenuPill;
     private TextView mMenuCaption;
     // The menu item Down was pressed on, until its page's rows are in.
@@ -133,8 +134,9 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         });
         mRows.setOnChanged(() -> {
             updateEmpty();
-            focusFirstCard();
             enterRows();
+            // On the menu bar with no artwork yet (rows can take longer than pickMenuArt waits).
+            if (mMenuMode && mBackdropFull.getDrawable() == null) pickMenuArt(MENU_ART_TRIES);
         });
         GuideStore.addListener(mGuideChanged);
         mTrailer = new HeroTrailer(this, findViewById(R.id.hero_video), mBackdrop, mBackdropFull,
@@ -266,6 +268,9 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     // ---- Menu ----
 
     private void buildMenu() {
+        // Rebuilt each time the page comes back: an item that had the focus gets it again.
+        View focus = getCurrentFocus();
+        Object focusedPage = focus != null && focus.getParent() == mMenu ? focus.getTag() : null;
         mMenu.removeAllViews();
         AddonStore store = Stremio.addons(this);
         String homeIcon = "";
@@ -284,6 +289,14 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         // A hub that's gone (no catalogs left) falls back to Home.
         if (mMenu.findViewWithTag(mPage) == null) mPage = PAGE_HOME;
         markMenu();
+        View again = focusedPage == null ? null : mMenu.findViewWithTag(focusedPage);
+        if (again != null) {
+            again.requestFocus();
+        } else if (focusedPage != null || !mOpened) {
+            // The app opens on the menu bar, on the page on screen (Home).
+            focusMenu();
+        }
+        mOpened = true;
     }
 
     private static String hubIconPath(String hubId, String icon) {
@@ -333,6 +346,13 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
 
     /** The pill slides to the focused item, its name under it; nothing on the bar moves. */
     private void showMenuFocus(View item) {
+        // Focused before the bar is laid out (as the app opens): once it is.
+        if (item.getWidth() == 0 || mMenuCaption.getWidth() == 0) {
+            item.post(() -> {
+                if (item.hasFocus() && item.getWidth() > 0) showMenuFocus(item);
+            });
+            return;
+        }
         float pillX = item.getLeft();
         float captionX = pillX + (item.getWidth() - mMenuCaption.getWidth()) / 2f;
         mMenuCaption.setText(item.getContentDescription());
@@ -453,19 +473,6 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         }
     }
 
-    /** The app opens on the first card, once there is one, unless the focus has moved on. */
-    private void focusFirstCard() {
-        if (mOpened || mRows.shownCount() == 0) return;
-        View focus = getCurrentFocus();
-        if (focus != null && focus != findViewById(R.id.menu_logo)) {
-            mOpened = true;
-            return;
-        }
-        mRowsView.post(() -> {
-            if (!mOpened && !isDestroyed() && mRowsView.requestFocus()) mOpened = true;
-        });
-    }
-
     private void updateEmpty() {
         boolean empty = mRows.shownCount() == 0;
         mEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
@@ -572,7 +579,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
             bindHero(pick);
         } else if (pick != null) {
             Images.fade(mBackdropFull, pick.background.isEmpty() ? pick.poster : pick.background);
-        } else if (attempt < 20) {
+        } else if (attempt < MENU_ART_TRIES) {
             mHandler.postDelayed(() -> pickMenuArt(attempt + 1), 500);
         }
     }

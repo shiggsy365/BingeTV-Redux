@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- A film's or show's info page, laid out as BingeTV's: a centred column over the left of the
-     artwork (logo, facts, genres, plot), a row of buttons, then tabs for the seasons, cast and
-     similar titles over a shelf showing the tab's content. Nothing scrolls vertically. -->
+     artwork (logo, facts, genres, plot), a row of buttons (Cast and Similar among them), then
+     a show's season tabs over a shelf: a season's episodes, the cast or similar titles. Nothing
+     scrolls vertically. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -175,6 +176,20 @@
                 android:src="@drawable/ic_trailer"
                 android:visibility="gone" />
 
+            <ImageView
+                android:id="@+id/cast_button"
+                style="@style/InfoRoundButton"
+                android:contentDescription="Cast"
+                android:src="@drawable/ic_cast"
+                android:visibility="gone" />
+
+            <ImageView
+                android:id="@+id/similar_button"
+                style="@style/InfoRoundButton"
+                android:contentDescription="Similar"
+                android:src="@drawable/ic_similar"
+                android:visibility="gone" />
+
             <TextView
                 android:id="@+id/hint"
                 android:layout_width="wrap_content"
@@ -185,7 +200,7 @@
                 android:textSize="14sp" />
         </LinearLayout>
 
-        <!-- ======== tabs: each season (or Episodes), Cast, Similar -->
+        <!-- ======== tabs: each season (or Episodes) -->
         <androidx.leanback.widget.HorizontalGridView
             android:id="@+id/seasons"
             android:layout_width="match_parent"

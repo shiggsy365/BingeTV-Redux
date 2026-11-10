@@ -22,18 +22,24 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A podcast's page: its artwork, notes and round buttons on the left (Subscribe and Mark
- * listened), its episodes on the right, newest first. OK plays an episode (from where it was
- * left). Mark listened (or Menu on an episode) marks the picked episode played or not: the one
- * last focused, which stays highlighted while the buttons have the focus.
+ * A podcast's page, in the info page's look: its artwork, name and round buttons (Subscribe and
+ * Mark listened) on the left, then the focused episode's details, with its picture behind the
+ * page; its episodes on the right, newest first, the first focused as it opens. OK plays an
+ * episode (from where it was left). Mark listened (or Menu on an episode) marks the picked
+ * episode played or not: the one last focused, which stays highlighted while the buttons have
+ * the focus.
  */
 public class PodcastActivity extends Activity {
     private static final String EXTRA_FEED = "feed";
 
     private String mFeedUrl;
     private Podcasts.Feed mFeed;
-    private ImageView mSubscribe, mListened;
-    private TextView mHint, mStatus;
+    private ImageView mSubscribe, mListened, mBackdrop;
+    private TextView mHint, mStatus, mEpisodeName, mNotes;
+    private android.widget.LinearLayout mFacts;
+    // The podcast's artwork, behind episodes with none of their own; and the picture showing.
+    private String mPodcastArt = "";
+    private String mBackdropUrl;
     private final List<AudioPlayer.Item> mEpisodes = new ArrayList<>();
     private final EpisodeAdapter mAdapter = new EpisodeAdapter();
     private VerticalGridView mList;
@@ -58,6 +64,10 @@ public class PodcastActivity extends Activity {
         mStatus = findViewById(R.id.status);
         mListened = findViewById(R.id.listened);
         mHint = findViewById(R.id.hint);
+        mBackdrop = findViewById(R.id.backdrop);
+        mEpisodeName = findViewById(R.id.episode_name);
+        mNotes = findViewById(R.id.notes);
+        mFacts = findViewById(R.id.facts);
         mListened.setOnClickListener(v -> {
             if (mPicked != null) togglePlayed(mPicked);
         });
@@ -124,9 +134,18 @@ public class PodcastActivity extends Activity {
                 mEpisodes.clear();
                 mEpisodes.addAll(loaded.episodes);
                 showEpisodes();
-                if (mList.getAdapter().getItemCount() > 0) mList.requestFocus();
-                else mSubscribe.requestFocus();
+                if (mEpisodes.isEmpty()) mSubscribe.requestFocus();
+                else focusFirstEpisode();
             });
+        });
+    }
+
+    /** Onto the newest episode, once the list has laid out its rows (it can't take focus before). */
+    private void focusFirstEpisode() {
+        mList.setSelectedPosition(0);
+        mList.post(() -> {
+            if (isDestroyed() || mList.hasFocus()) return;
+            if (mList.getChildCount() == 0 || !mList.requestFocus()) mList.postDelayed(this::focusFirstEpisode, 50);
         });
     }
 
@@ -161,6 +180,7 @@ public class PodcastActivity extends Activity {
         int at = mEpisodes.indexOf(episode);
         if (at >= 0) mAdapter.notifyItemChanged(at);
         showButtons();
+        if (episode == mPicked) showEpisode(episode);
     }
 
     /** Picks an episode for Mark listened, highlighting its row in place of the last one. */
@@ -174,6 +194,27 @@ public class PodcastActivity extends Activity {
             if (h != null) h.itemView.setSelected(e == mPicked);
         }
         showButtons();
+        if (episode != null) showEpisode(episode);
+    }
+
+    /** The picked episode's name, facts and notes on the left, and its picture behind. */
+    private void showEpisode(AudioPlayer.Item e) {
+        mEpisodeName.setText(e.title);
+        List<String> facts = new ArrayList<>();
+        for (String part : Podcasts.episodeLine(this, e).split("  ·  ")) {
+            // The podcast's name is the page's title already.
+            if (!part.isEmpty() && !part.equals(e.subtitle)) facts.add(part);
+        }
+        InfoChips.fill(mFacts, facts);
+        String notes = mFeed == null ? null : mFeed.notes.get(e.id);
+        mNotes.setText(notes);
+        showBackdrop(e.artwork.isEmpty() ? mPodcastArt : e.artwork);
+    }
+
+    private void showBackdrop(String url) {
+        if (url.equals(mBackdropUrl)) return;
+        mBackdropUrl = url;
+        Images.fadeSoft(mBackdrop, url);
     }
 
     private void showEpisodes() {
@@ -188,9 +229,13 @@ public class PodcastActivity extends Activity {
     private void showPodcast(Podcasts.Podcast p) {
         ((TextView) findViewById(R.id.title)).setText(p.title);
         ((TextView) findViewById(R.id.author)).setText(p.author);
-        ((TextView) findViewById(R.id.notes)).setText(p.description);
         Images.load(findViewById(R.id.artwork), p.artwork);
-        Images.fadeSoft(findViewById(R.id.backdrop), p.artwork);
+        mPodcastArt = p.artwork;
+        // Until an episode is picked: the podcast's own notes and artwork.
+        if (mPicked == null) {
+            mNotes.setText(p.description);
+            showBackdrop(p.artwork);
+        }
     }
 
     private void play(AudioPlayer.Item episode) {

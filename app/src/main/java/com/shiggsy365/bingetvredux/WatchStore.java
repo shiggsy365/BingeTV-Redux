@@ -96,6 +96,9 @@ public final class WatchStore {
     private final Map<String, Row> mRows = new HashMap<>();
     // Shows hidden from Next Up and Continue Watching until something newer happens in them.
     private final Map<String, Long> mDismissed = new HashMap<>();
+    // Ids a show or film was stored under that the addons know by another (MDBList gives some
+    // shows only a TMDB id; the addons answer with their IMDb one): old id -> the addons' id.
+    private final Map<String, String> mAliases = new HashMap<>();
     private final List<Runnable> mListeners = new ArrayList<>();
     // Show or film id -> its most recent part-watched row; null until needed after a change.
     private Map<String, Row> mResumeByMeta;
@@ -117,6 +120,9 @@ public final class WatchStore {
         }
         try (Cursor c = db.query("dismissed", null, null, null, null, null, null)) {
             while (c.moveToNext()) mDismissed.put(c.getString(0), c.getLong(1));
+        }
+        try (Cursor c = db.query("aliases", null, null, null, null, null, null)) {
+            while (c.moveToNext()) mAliases.put(c.getString(0), c.getString(1));
         }
         android.util.Log.i("WatchStore", mRows.size() + " rows for " + profileId + " in "
                 + (android.os.SystemClock.uptimeMillis() - started) + " ms"
@@ -526,6 +532,87 @@ public final class WatchStore {
     }
 
     /**
+     * A show or film stored under {@code fromId} that the addons know as {@code toId}: its rows
+     * (and Next Up dismissal) move to {@code toId}, and from now on what MDBList says about
+     * {@code fromId} goes there too. Otherwise the two never meet: Big Brother, watched under
+     * MDBList's TMDB id, stayed on Next Up however much of it was marked watched on its info
+     * page, which used the addons' IMDb id. Where both ids have a row for an episode, the more
+     * recently changed one is kept.
+     */
+    public void adopt(String fromId, String toId) {
+        if (fromId == null || toId == null || fromId.isEmpty() || toId.isEmpty() || fromId.equals(toId)) {
+            return;
+        }
+        boolean moved = false;
+        synchronized (this) {
+            if (toId.equals(mAliases.get(fromId)) && !hasRowsLocked(fromId)) return;
+            SQLiteDatabase db = mHelper.getWritableDatabase();
+            db.beginTransaction();
+            try {
+                mAliases.put(fromId, toId);
+                ContentValues alias = new ContentValues();
+                alias.put("from_id", fromId);
+                alias.put("to_id", toId);
+                db.insertWithOnConflict("aliases", null, alias, SQLiteDatabase.CONFLICT_REPLACE);
+                List<Row> rows = new ArrayList<>();
+                for (Row r : mRows.values()) if (fromId.equals(r.entry.metaId)) rows.add(r);
+                for (Row r : rows) {
+                    mRows.remove(r.entry.videoId);
+                    db.delete("progress", "video_id = ?", new String[]{r.entry.videoId});
+                    Entry e = aliased(r.entry);
+                    Row there = mRows.get(e.videoId);
+                    if (there != null && Math.max(there.updatedAt, there.watchedAt)
+                            >= Math.max(r.updatedAt, r.watchedAt)) {
+                        // Keeps that one, with this one's ids (for MDBList) added.
+                        there.entry = merged(e).entry;
+                        write(there);
+                    } else {
+                        Row row = merged(e);
+                        row.positionMs = r.positionMs;
+                        row.durationMs = r.durationMs;
+                        row.watched = r.watched;
+                        row.watchedAt = r.watchedAt;
+                        row.updatedAt = r.updatedAt;
+                        row.synced = r.synced;
+                        row.unwatchedAt = r.unwatchedAt;
+                        write(row);
+                    }
+                    moved = true;
+                }
+                Long dismissed = mDismissed.remove(fromId);
+                if (dismissed != null) {
+                    db.delete("dismissed", "meta_id = ?", new String[]{fromId});
+                    Long already = mDismissed.get(toId);
+                    dismissShowLocked(toId, already == null ? dismissed : Math.max(already, dismissed));
+                }
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
+            mResumeByMeta = null;
+            mWatchedByMeta = null;
+            mActiveByMeta = null;
+        }
+        android.util.Log.i("WatchStore", "Rows of " + fromId + " now under " + toId);
+        if (moved) changed();
+    }
+
+    private boolean hasRowsLocked(String metaId) {
+        for (Row r : mRows.values()) if (metaId.equals(r.entry.metaId)) return true;
+        return false;
+    }
+
+    /** The entry under the id the addons know its show or film by (see adopt). */
+    private Entry aliased(Entry e) {
+        String to = mAliases.get(e.metaId);
+        if (to == null) return e;
+        String videoId = e.videoId.startsWith(e.metaId) ? to + e.videoId.substring(e.metaId.length())
+                : e.videoId;
+        return new Entry(videoId, e.type, to, e.season, e.episode, e.title, e.name, e.poster,
+                e.background, e.logo, e.bingeGroup, e.ids);
+    }
+
+    /**
      * Applies a watched list from elsewhere (MDBList): each becomes watched and synced.
      * Returns how many were newly watched.
      */
@@ -538,7 +625,8 @@ public final class WatchStore {
             db.beginTransaction();
             try {
                 for (int i = 0; i < entries.size(); i++) {
-                    Row existing = mRows.get(entries.get(i).videoId);
+                    Entry entry = aliased(entries.get(i));
+                    Row existing = mRows.get(entry.videoId);
                     if (existing != null && existing.watched && existing.synced) continue;
                     long at = watchedAt.get(i);
                     // Marked unwatched here after MDBList's watch (or MDBList not told yet).
@@ -546,7 +634,7 @@ public final class WatchStore {
                             && (at <= existing.unwatchedAt || !existing.synced)) {
                         continue;
                     }
-                    Row row = merged(entries.get(i));
+                    Row row = merged(entry);
                     if (!row.watched) added++;
                     row.watched = true;
                     row.synced = true;
@@ -582,9 +670,10 @@ public final class WatchStore {
                             || position >= duration * watchedPercent / 100) {
                         continue;
                     }
-                    Row known = mRows.get(entries.get(i).videoId);
+                    Entry entry = aliased(entries.get(i));
+                    Row known = mRows.get(entry.videoId);
                     if (known != null && at <= Math.max(known.updatedAt, known.watchedAt)) continue;
-                    Row row = merged(entries.get(i));
+                    Row row = merged(entry);
                     row.positionMs = position;
                     row.durationMs = duration;
                     row.updatedAt = at;
@@ -606,8 +695,10 @@ public final class WatchStore {
             SQLiteDatabase db = mHelper.getWritableDatabase();
             db.delete("progress", null, null);
             db.delete("dismissed", null, null);
+            db.delete("aliases", null, null);
             mRows.clear();
             mDismissed.clear();
+            mAliases.clear();
             mResumeByMeta = null;
             mWatchedByMeta = null;
             mActiveByMeta = null;
@@ -760,7 +851,7 @@ public final class WatchStore {
 
     private static final class Helper extends SQLiteOpenHelper {
         Helper(Context context, String name) {
-            super(context, name, null, 2);
+            super(context, name, null, 3);
         }
 
         @Override
@@ -773,12 +864,16 @@ public final class WatchStore {
                     + " unwatched_at INTEGER NOT NULL DEFAULT 0)");
             db.execSQL("CREATE INDEX progress_meta ON progress (meta_id)");
             db.execSQL("CREATE TABLE dismissed (meta_id TEXT PRIMARY KEY, dismissed_at INTEGER)");
+            db.execSQL("CREATE TABLE aliases (from_id TEXT PRIMARY KEY, to_id TEXT)");
         }
 
         @Override
         public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
             if (oldVersion < 2) {
                 db.execSQL("ALTER TABLE progress ADD COLUMN unwatched_at INTEGER NOT NULL DEFAULT 0");
+            }
+            if (oldVersion < 3) {
+                db.execSQL("CREATE TABLE aliases (from_id TEXT PRIMARY KEY, to_id TEXT)");
             }
         }
     }

@@ -39,15 +39,17 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The live TV guide, laid out like a TV programme guide: group chips, details and a live
- * preview of the highlighted channel, then a time grid of channels and programmes with a
- * line at the current time. Selecting a programme plays its channel in PlayerActivity; on a
+ * The live TV guide, laid out like a TV programme guide in Home's look: the highlighted
+ * programme's picture behind it all, a bar of channel groups (as Home's menu bar: a pill follows
+ * the focus, and OK or Down opens the group), details and a live preview of the highlighted
+ * channel, then a time grid of channels and programmes with a line at the current time. It
+ * opens on the first channel. Selecting a programme plays its channel in PlayerActivity; on a
  * channel with catch-up (marked ↺) the grid scrolls back into the past, and selecting a
  * programme that has ended plays its recording.
  *
  * The grid handles the D-pad itself (Android's focus search doesn't suit a time grid):
  * Left/Right move between programmes, scrolling the window in half-hour steps; Up/Down move
- * between channels at the same time; Up from the top row or Back returns to the chips.
+ * between channels at the same time; Up from the top row or Back returns to the groups.
  */
 public class GuideActivity extends Activity {
     private static final long MINUTE = 60_000;
@@ -62,8 +64,17 @@ public class GuideActivity extends Activity {
     private static final int REQUEST_VPN = 1;
     // Space between the channel column and the programme cells (guide_grid_row.xml).
     private static final int COLUMN_GAP_DP = 3;
+    private static final long GROUP_FOCUS_MS = 160;
 
     private LinearLayout mChips;
+    private android.widget.HorizontalScrollView mGroupsScroll;
+    private View mGroupsMore;
+    private View mGroupPill;
+    private android.animation.ValueAnimator mPillWidth;
+    private ImageView mBackdrop;
+    private ImageView mPreviewArt;
+    // The pictures showing, so the half-minute redraws don't load them again.
+    private String mBackdropUrl = "";
     private RecyclerView mGrid;
     private FrameLayout mRuler;
     private TextView mRulerDate;
@@ -88,7 +99,6 @@ public class GuideActivity extends Activity {
     private List<GuideData.Group> mGroups = new ArrayList<>();
     private List<GuideData.Channel> mChannels = Collections.emptyList();
     private String mGroupId = GuideData.ALL_GROUP_ID;
-    private View mSelectedChip;
 
     private boolean mGridMode;
     // The first load opens in the grid; later reloads keep whatever had focus.
@@ -137,6 +147,14 @@ public class GuideActivity extends Activity {
         mTimeFormat = android.text.format.DateFormat.getTimeFormat(this);
 
         mChips = findViewById(R.id.chips);
+        mGroupPill = findViewById(R.id.group_pill);
+        mGroupsScroll = findViewById(R.id.groups_scroll);
+        mGroupsMore = findViewById(R.id.groups_more);
+        // › while there are groups past the right edge.
+        mGroupsScroll.setOnScrollChangeListener((v, x, y, oldX, oldY) -> showGroupsMore());
+        mChips.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> showGroupsMore());
+        mBackdrop = findViewById(R.id.backdrop);
+        mPreviewArt = findViewById(R.id.preview_art);
         mGrid = findViewById(R.id.grid);
         mRuler = findViewById(R.id.ruler);
         mRulerDate = findViewById(R.id.ruler_date);
@@ -256,7 +274,8 @@ public class GuideActivity extends Activity {
 
     private void exitGrid() {
         mGridMode = false;
-        if (mSelectedChip != null) mSelectedChip.requestFocus();
+        View group = mChips.findViewWithTag(mGroupId);
+        if (group != null) group.requestFocus();
         render();
     }
 
@@ -432,26 +451,17 @@ public class GuideActivity extends Activity {
         mVpnToggle.setText(text);
     }
 
-    // ---- Chips ----
+    // ---- Groups ----
 
     private void buildChips() {
-        boolean chipsFocused = mLoaded && (mChips.hasFocus() || !mGridMode);
+        boolean groupsFocused = mLoaded && (mChips.hasFocus() || !mGridMode);
         long focusedChannel = mChannels.isEmpty() ? -1 : mChannels.get(mRow).id;
         mChips.removeAllViews();
-        mSelectedChip = null;
         GuideData.Group selected = mGroups.isEmpty() ? null : mGroups.get(0);
         for (GuideData.Group g : mGroups) {
             if (g.id.equals(mGroupId)) selected = g;
         }
-        for (GuideData.Group group : mGroups) {
-            TextView chip = newChip(group.name);
-            chip.setOnFocusChangeListener((v, focused) -> {
-                if (focused) selectGroup(group, v);
-            });
-            chip.setOnClickListener(v -> mGrid.requestFocus());
-            mChips.addView(chip);
-            if (group == selected) mSelectedChip = chip;
-        }
+        for (GuideData.Group group : mGroups) mChips.addView(newGroupItem(group));
         boolean empty = selected == null || selected.channels.isEmpty();
         mGridArea.setVisibility(empty ? View.INVISIBLE : View.VISIBLE);
         mEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
@@ -461,25 +471,29 @@ public class GuideActivity extends Activity {
             String url = WebServerService.pageUrl();
             mEmpty.setText("No channels yet.\nManage channels at "
                     + (url != null ? url : "the web manager") + ".");
+            if (selected != null) mGroupId = selected.id;
+            markGroups();
+            if (mChips.getChildCount() > 0 && !mVpnToggle.isFocused()) exitGrid();
             render();
             return;
         }
 
-        // Keep the same group and channel across a reload.
+        // Keep the same group and channel across a reload; the first load opens on the first.
+        boolean first = !mLoaded;
         mLoaded = true;
         mGroupId = selected.id;
         mChannels = selected.channels;
-        mSelectedChip.setSelected(true);
+        markGroups();
         int row = 0;
         for (int i = 0; i < mChannels.size(); i++) {
             if (mChannels.get(i).id == focusedChannel) row = i;
         }
-        mRow = row;
+        mRow = first ? 0 : row;
         mAdapter.notifyDataSetChanged();
-        if (chipsFocused) {
+        if (groupsFocused) {
             mGridMode = false;
             // A reload leaves the VPN switch focused if it was.
-            if (!mVpnToggle.isFocused()) mSelectedChip.requestFocus();
+            if (!mVpnToggle.isFocused()) exitGrid();
         } else {
             mGrid.requestFocus();
         }
@@ -487,34 +501,82 @@ public class GuideActivity extends Activity {
         schedulePreview();
     }
 
-    private TextView newChip(String text) {
-        TextView chip = new TextView(this);
-        chip.setText(text);
-        chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        chip.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        chip.setTextColor(getColorStateList(R.color.guide_chip_text));
-        chip.setBackgroundResource(R.drawable.guide_chip);
-        chip.setFocusable(true);
-        chip.setNextFocusDownId(R.id.grid);
-        chip.setPadding(dp(12), dp(4), dp(12), dp(4));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMarginEnd(dp(6));
-        chip.setLayoutParams(lp);
-        return chip;
+    /** A group on the bar: focusing it moves the pill there; OK or Down opens it. */
+    private View newGroupItem(GuideData.Group group) {
+        View item = LayoutInflater.from(this).inflate(R.layout.guide_group_item, mChips, false);
+        ((TextView) item.findViewById(R.id.group_name)).setText(group.name);
+        item.setTag(group.id);
+        item.setOnFocusChangeListener((v, focused) -> {
+            styleGroup(v);
+            if (focused) showGroupFocus(v);
+            // Once the focus has settled: still somewhere on the bar, or gone to the grid.
+            v.post(() -> {
+                if (!mChips.hasFocus()) hideGroupFocus();
+            });
+        });
+        item.setOnClickListener(v -> openGroup(group));
+        item.setOnKeyListener((v, keyCode, event) -> {
+            if (keyCode != KeyEvent.KEYCODE_DPAD_DOWN) return false;
+            if (event.getAction() == KeyEvent.ACTION_DOWN) openGroup(group);
+            return true;
+        });
+        return item;
     }
 
-    private void selectGroup(GuideData.Group group, View chip) {
-        mGridMode = false;
-        if (mSelectedChip != null) mSelectedChip.setSelected(false);
-        mSelectedChip = chip;
-        chip.setSelected(true);
-        if (group.id.equals(mGroupId) && mChannels == group.channels) {
-            render();
-            return;
+    private void showGroupsMore() {
+        mGroupsMore.setVisibility(mGroupsScroll.canScrollHorizontally(1) ? View.VISIBLE : View.INVISIBLE);
+    }
+
+    private void markGroups() {
+        for (int i = 0; i < mChips.getChildCount(); i++) styleGroup(mChips.getChildAt(i));
+    }
+
+    /** The group on screen is white with a red mark; focused, white; others, dimmer. */
+    private void styleGroup(View item) {
+        boolean current = mGroupId.equals(item.getTag());
+        ((TextView) item.findViewById(R.id.group_name)).setTextColor(
+                item.hasFocus() || current ? 0xFFFFFFFF : 0x8CFFFFFF);
+        item.findViewById(R.id.group_marker).setVisibility(current ? View.VISIBLE : View.INVISIBLE);
+    }
+
+    /** The pill slides to the focused group, taking its width; nothing on the bar moves. */
+    private void showGroupFocus(View item) {
+        ViewGroup.LayoutParams lp = mGroupPill.getLayoutParams();
+        if (mPillWidth != null) mPillWidth.cancel();
+        if (mGroupPill.getAlpha() == 0f) {
+            mGroupPill.setTranslationX(item.getLeft());
+            lp.width = item.getWidth();
+            mGroupPill.setLayoutParams(lp);
+        } else {
+            mPillWidth = android.animation.ValueAnimator.ofInt(mGroupPill.getWidth(), item.getWidth());
+            mPillWidth.setDuration(GROUP_FOCUS_MS);
+            mPillWidth.addUpdateListener(a -> {
+                lp.width = (Integer) a.getAnimatedValue();
+                mGroupPill.setLayoutParams(lp);
+            });
+            mPillWidth.start();
         }
+        mGroupPill.animate().translationX(item.getLeft()).alpha(1f).setDuration(GROUP_FOCUS_MS).start();
+    }
+
+    private void hideGroupFocus() {
+        mGroupPill.animate().alpha(0f).setDuration(GROUP_FOCUS_MS).start();
+    }
+
+    /** Into a group's channels, from its first. */
+    private void openGroup(GuideData.Group group) {
+        if (group.channels.isEmpty()) return;
+        selectGroup(group);
+        mGrid.requestFocus();
+    }
+
+    private void selectGroup(GuideData.Group group) {
+        if (group.id.equals(mGroupId) && mChannels == group.channels) return;
         mGroupId = group.id;
         mChannels = group.channels;
+        markGroups();
+        mGridArea.setVisibility(View.VISIBLE);
+        mEmpty.setVisibility(View.GONE);
         mRow = 0;
         long now = System.currentTimeMillis();
         mWindowStart = floorStep(now);
@@ -583,10 +645,12 @@ public class GuideActivity extends Activity {
             mHeroTitle.setText("");
             mHeroTime.setText("");
             mHeroDescription.setText("");
+            showArt(null);
             return;
         }
         GuideData.Channel channel = mChannels.get(mRow);
         GuideData.Program p = programAt(channel.programs, mFocusTime);
+        showArt(p != null ? p.image : null);
         mHeroTitle.setText(p != null ? p.title : channel.name);
         StringBuilder time = new StringBuilder();
         if (p != null) {
@@ -605,6 +669,19 @@ public class GuideActivity extends Activity {
         }
         mHeroTime.setText(time);
         mHeroDescription.setText(p != null && p.description != null ? p.description : "");
+    }
+
+    /**
+     * The highlighted programme's picture: full screen behind the guide, soft and dimmed, and in
+     * the preview's window until the channel plays (the channel's logo when there's none).
+     */
+    private void showArt(String url) {
+        String art = url == null ? "" : url;
+        if (art.equals(mBackdropUrl)) return;
+        mBackdropUrl = art;
+        Images.fadeSoft(mBackdrop, art);
+        Images.fade(mPreviewArt, art);
+        mPreviewLogo.setVisibility(art.isEmpty() ? View.VISIBLE : View.INVISIBLE);
     }
 
     private void onTick() {

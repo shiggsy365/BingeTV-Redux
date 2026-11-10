@@ -43,7 +43,7 @@ import java.util.concurrent.Callable;
  * A film's or show's info page, laid out as BingeTV's. It opens with what the poster already
  * knew and fills in once the addons answer: facts and genres, the buttons, a show's seasons and
  * episodes (with what's been watched), the cast (selecting someone searches their name) and,
- * with MDBList, similar titles. Play resumes where it was left, or plays the next episode;
+ * with MDBList, similar titles; Cast and Similar are buttons that put them on the shelf. Play resumes where it was left, or plays the next episode;
  * Start over ignores the resume point. Films and seasons can be marked watched, and titles added
  * to the MDBList watchlist.
  */
@@ -84,8 +84,11 @@ public class DetailsActivity extends Activity {
     private ImageView mWatchlist;
     private ImageView mRemove;
     private ImageView mTrailer;
+    private ImageView mCastButton;
+    private ImageView mSimilarButton;
     private TextView mHint;
-    // The tabs: each season's number, then TAB_CAST and TAB_SIMILAR.
+    // The tabs: each season's number. What's on the shelf (mTab) can also be TAB_CAST or
+    // TAB_SIMILAR, from their buttons.
     private HorizontalGridView mSeasons;
     private final List<Integer> mTabs = new ArrayList<>();
     private int mTab = TAB_NONE;
@@ -148,6 +151,8 @@ public class DetailsActivity extends Activity {
         mWatchlist = findViewById(R.id.watchlist);
         mRemove = findViewById(R.id.remove);
         mTrailer = findViewById(R.id.trailer);
+        mCastButton = findViewById(R.id.cast_button);
+        mSimilarButton = findViewById(R.id.similar_button);
         mHint = findViewById(R.id.hint);
         mSeasons = findViewById(R.id.seasons);
         mEpisodes = findViewById(R.id.episodes);
@@ -173,11 +178,15 @@ public class DetailsActivity extends Activity {
         mWatchlist.setOnClickListener(v -> toggleWatchlist());
         mRemove.setOnClickListener(v -> removeFromHome());
         mTrailer.setOnClickListener(v -> TrailerActivity.start(this, mItem.trailer, mItem.name));
+        mCastButton.setOnClickListener(v -> openShelf(TAB_CAST));
+        mSimilarButton.setOnClickListener(v -> openShelf(TAB_SIMILAR));
         // The round buttons say what they do.
-        for (View button : new View[]{mStreams, mStartOver, mWatched, mRemove, mWatchlist, mTrailer}) {
+        for (View button : new View[]{mStreams, mStartOver, mWatched, mRemove, mWatchlist, mTrailer,
+                mCastButton, mSimilarButton}) {
             button.setOnFocusChangeListener((v, focused) -> {
                 mHint.setText(focused ? hint(v) : "");
                 if (v == mWatched && mItem != null) updateWatched();
+                if (v == mCastButton || v == mSimilarButton) updateShelfButtons();
             });
         }
         mPlay.requestFocus();
@@ -236,6 +245,9 @@ public class DetailsActivity extends Activity {
             try {
                 Metas.Found found = Metas.fetch(Stremio.client(this), Stremio.addons(this),
                         mType, mId);
+                // Opened by an id the addons know by another (MDBList's TMDB one, say): what's
+                // been watched moves to theirs, which everything here uses.
+                WatchStore.get(this).adopt(mId, found.meta.id);
                 runOnUiThread(() -> show(found.meta));
                 loadSimilar(found.meta);
             } catch (StremioException e) {
@@ -354,6 +366,8 @@ public class DetailsActivity extends Activity {
         if (button == mStreams) return "Choose a stream";
         if (button == mStartOver) return "Start over";
         if (button == mTrailer) return "Trailer";
+        if (button == mCastButton) return "Cast";
+        if (button == mSimilarButton) return "Similar";
         if (button == mRemove) return removeLabel();
         if (button == mWatchlist) {
             return mItem != null && Mdblist.onWatchlist(mItem.id) ? "Remove from watchlist" : "Add to watchlist";
@@ -695,20 +709,50 @@ public class DetailsActivity extends Activity {
         updateWatched();
     }
 
-    /** The tabs there are now (similar titles arrive last); the first is shown if none is yet. */
+    /**
+     * The season tabs, and the Cast and Similar buttons for what there is (similar titles arrive
+     * last). A film's shelf shows its cast, else its similar titles, until a button says otherwise.
+     */
     private void showTabs() {
         mTabs.clear();
         mTabs.addAll(mSeasonNumbers);
-        if (!mPeople.isEmpty()) mTabs.add(TAB_CAST);
-        if (!mSimilarItems.isEmpty()) mTabs.add(TAB_SIMILAR);
         notifyChanged(mSeasons);
         mSeasons.setVisibility(mTabs.isEmpty() ? View.GONE : View.VISIBLE);
-        // Down from the buttons goes to the tabs. Only when they're shown: hidden they'd still
-        // be picked, and the focus would stay put.
-        for (View button : new View[]{mPlay, mStreams, mStartOver, mWatched, mRemove, mWatchlist, mTrailer}) {
-            button.setNextFocusDownId(mTabs.isEmpty() ? View.NO_ID : R.id.seasons);
+        mCastButton.setVisibility(mPeople.isEmpty() ? View.GONE : View.VISIBLE);
+        mSimilarButton.setVisibility(mSimilarItems.isEmpty() ? View.GONE : View.VISIBLE);
+        if (mSeasonNumbers.isEmpty() && mTab == TAB_NONE) {
+            if (!mPeople.isEmpty()) showTab(TAB_CAST);
+            else if (!mSimilarItems.isEmpty()) showTab(TAB_SIMILAR);
         }
-        if (!mTabs.contains(mTab) && !mTabs.isEmpty() && mSeasonNumbers.isEmpty()) showTab(mTabs.get(0));
+        updateShelfButtons();
+    }
+
+    /** Cast or Similar pressed: onto the shelf, and the focus with it. */
+    private void openShelf(int tab) {
+        showTab(tab);
+        View shelf = shelf();
+        shelf.post(() -> {
+            if (!isDestroyed()) shelf.requestFocus();
+        });
+    }
+
+    /**
+     * Cast and Similar are red while their content is on the shelf (white focused, as Watched).
+     * Down from the buttons goes to a show's season tabs, else to the shelf. Never to something
+     * hidden: it would still be picked, and the focus would stay put.
+     */
+    private void updateShelfButtons() {
+        for (ImageView button : new ImageView[]{mCastButton, mSimilarButton}) {
+            boolean on = mTab == (button == mCastButton ? TAB_CAST : TAB_SIMILAR);
+            button.setImageTintList(android.content.res.ColorStateList.valueOf(
+                    on && !button.hasFocus() ? getColor(R.color.guide_accent) : 0xFFFFFFFF));
+        }
+        int down = !mTabs.isEmpty() ? R.id.seasons
+                : mTab == TAB_CAST ? R.id.cast : mTab == TAB_SIMILAR ? R.id.similar : View.NO_ID;
+        for (View button : new View[]{mPlay, mStreams, mStartOver, mWatched, mRemove, mWatchlist, mTrailer,
+                mCastButton, mSimilarButton}) {
+            button.setNextFocusDownId(down);
+        }
     }
 
     /** Puts a tab's content on the shelf. */
@@ -718,8 +762,12 @@ public class DetailsActivity extends Activity {
         mCast.setVisibility(tab == TAB_CAST ? View.VISIBLE : View.GONE);
         mSimilar.setVisibility(tab == TAB_SIMILAR ? View.VISIBLE : View.GONE);
         mTab = tab;
-        if (season && tab != mSeason) showSeason(tab);
-        else restyleTabs();
+        if (season && tab != mSeason) {
+            showSeason(tab);
+        } else {
+            restyleTabs();
+            updateShelfButtons();
+        }
     }
 
     private View shelf() {
@@ -740,6 +788,7 @@ public class DetailsActivity extends Activity {
         // Down from the buttons lands on this season's tab, not the first one.
         if (!mSeasons.hasFocus()) mSeasons.setSelectedPosition(Math.max(0, mTabs.indexOf(season)));
         restyleTabs();
+        updateShelfButtons();
         updateWatched();
     }
 
@@ -760,12 +809,10 @@ public class DetailsActivity extends Activity {
         tab.setSelected(current);
         tab.setTypeface(null, current ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         tab.setTextColor(current || tab.isFocused() ? 0xFFFFFFFF
-                : season != TAB_CAST && season != TAB_SIMILAR && seasonWatched(season) ? 0xFF6E6E6E : 0xFFA0A0A0);
+                : seasonWatched(season) ? 0xFF6E6E6E : 0xFFA0A0A0);
     }
 
     private String tabName(int tab) {
-        if (tab == TAB_CAST) return "Cast";
-        if (tab == TAB_SIMILAR) return "Similar";
         if (mSeasonNumbers.size() == 1) return "Episodes";
         return seasonName(tab);
     }
@@ -890,7 +937,7 @@ public class DetailsActivity extends Activity {
             Images.load(view.findViewById(R.id.cast_photo), person.photo);
             view.setOnClickListener(v -> startActivity(
                     SearchActivity.personIntent(DetailsActivity.this, person.name)));
-            view.setNextFocusUpId(R.id.seasons);
+            view.setNextFocusUpId(R.id.cast_button);
         }
 
         @Override
@@ -927,7 +974,7 @@ public class DetailsActivity extends Activity {
             Images.load(view.findViewById(R.id.card_image), item.poster);
             Badges.bind(card, item);
             card.setOnClickListener(v -> startActivity(DetailsActivity.intent(DetailsActivity.this, item)));
-            card.setNextFocusUpId(R.id.seasons);
+            card.setNextFocusUpId(R.id.similar_button);
             card.setOnFocusChangeListener((v, focused) -> {
                 CardFocus.apply(v, focused, CardFocus.SMALL);
             });

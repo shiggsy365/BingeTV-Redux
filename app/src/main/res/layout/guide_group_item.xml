@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A group on the guide's bar, as a menu bar item: its name, with a short red mark while it's
+     the group on screen. The pill behind the focused one is GuideActivity's. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="40dp"
+    android:layout_marginEnd="4dp"
+    android:clickable="true"
+    android:focusable="true">
+
+    <TextView
+        android:id="@+id/group_name"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:fontFamily="sans-serif-medium"
+        android:gravity="center"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="3dp"
+        android:shadowColor="#CC000000"
+        android:shadowRadius="4"
+        android:singleLine="true"
+        android:textSize="15sp" />
+
+    <View
+        android:id="@+id/group_marker"
+        android:layout_width="14dp"
+        android:layout_height="3dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="4dp"
+        android:background="@drawable/menu_marker"
+        android:visibility="invisible" />
+</FrameLayout>
