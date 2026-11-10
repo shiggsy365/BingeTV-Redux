@@ -350,8 +350,8 @@ public final class MetaItem {
             JSONArray fromExtras = extras == null ? null : extras.optJSONArray(job[1]);
             for (int i = 0; fromExtras != null && i < fromExtras.length(); i++) {
                 JSONObject p = fromExtras.optJSONObject(i);
-                if (p != null) addPerson(people, job[0], p.optString("name", ""),
-                        p.optString("character", ""), p.optString("photo", ""));
+                if (p != null) addPerson(people, job[0], text(p, "name"),
+                        text(p, "character"), text(p, "photo"));
             }
             Object raw = data.opt(job[2]);
             List<Object> entries = new ArrayList<>();
@@ -363,8 +363,8 @@ public final class MetaItem {
             for (Object entry : entries) {
                 if (entry instanceof JSONObject) {
                     JSONObject p = (JSONObject) entry;
-                    addPerson(people, job[0], p.optString("name", ""),
-                            p.optString("character", ""), p.optString("photo", ""));
+                    addPerson(people, job[0], text(p, "name"),
+                            text(p, "character"), text(p, "photo"));
                 } else if (entry instanceof String) {
                     for (String n : ((String) entry).split(",")) addPerson(people, job[0], n, "", "");
                 }
@@ -377,6 +377,11 @@ public final class MetaItem {
             }
         }
         return new ArrayList<>(people.values());
+    }
+
+    /** A person's field; an addon's JSON null is nothing, not the word "null". */
+    private static String text(JSONObject person, String key) {
+        return person.isNull(key) ? "" : person.optString(key, "");
     }
 
     private static void addPerson(Map<String, Person> people, String job, String name,

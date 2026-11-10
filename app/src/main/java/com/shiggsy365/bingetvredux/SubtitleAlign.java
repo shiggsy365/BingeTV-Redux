@@ -33,11 +33,14 @@ final class SubtitleAlign {
         final double ratio;
         /** Clear of every other delay. */
         final boolean confident;
+        /** The share of the speech both have, out of the speech either has. */
+        final double match;
 
-        Alignment(long delayMs, double ratio, boolean confident) {
+        Alignment(long delayMs, double ratio, boolean confident, double match) {
             this.delayMs = delayMs;
             this.ratio = ratio;
             this.confident = confident;
+            this.match = match;
         }
     }
 
@@ -316,6 +319,6 @@ final class SubtitleAlign {
         if (found == null) return null;
         boolean confident = found.match >= MIN_MATCH
                 && (found.lead >= MIN_LEAD || edgesAgree(reference, target, found, fromMs, toMs, curves));
-        return new Alignment(Math.round(found.delayMs), found.ratio, confident);
+        return new Alignment(Math.round(found.delayMs), found.ratio, confident, found.match);
     }
 }

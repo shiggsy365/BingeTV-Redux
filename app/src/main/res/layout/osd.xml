@@ -65,8 +65,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
+                android:shadowColor="#CC000000"
+                android:shadowRadius="4"
                 android:singleLine="true"
-                android:textColor="#FFB4B4B4"
+                android:textColor="#FFE0E0E0"
                 android:textSize="13sp" />
 
             <com.shiggsy365.bingetvredux.ScrollingText

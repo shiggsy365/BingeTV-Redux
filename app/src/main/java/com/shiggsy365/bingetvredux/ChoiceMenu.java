@@ -1,25 +1,32 @@
 package com.shiggsy365.bingetvredux;
 
+import android.content.Context;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
 import android.widget.BaseAdapter;
-import android.widget.ListPopupWindow;
+import android.widget.ListView;
+import android.widget.PopupWindow;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 
+import java.util.ArrayList;
 import java.util.List;
 
-/** A drop-down list of choices beside a button (the OSD's audio, subtitles, picture and speed). */
+/**
+ * A list of choices on a panel along the right of the screen, keeping the picture in view (the
+ * OSD's audio, subtitles, picture and speed, and live TV's channels).
+ */
 final class ChoiceMenu {
+    private static final int WIDTH_DP = 400;
+
     interface OnChoose {
         void choose(int index);
     }
 
-    /** A row of a sectioned menu: a choice, with details on the right, or a section's heading. */
+    /** A row of a menu: a choice, with details on the right, or a section's heading. */
     static final class Row {
         private static final int TITLE = 0;
         private static final int HEADING = 1;
@@ -46,19 +53,29 @@ final class ChoiceMenu {
 
     private ChoiceMenu() {}
 
+    /** A plain list: {@code labels}, the {@code chosen} one ticked; closing it calls {@code onClose} (may be null). */
+    static PopupWindow show(View anchor, String title, List<String> labels, int chosen,
+            OnChoose onChoose, Runnable onClose) {
+        List<Row> rows = new ArrayList<>();
+        for (String label : labels) rows.add(Row.choice(label, ""));
+        return show(anchor, title, rows, chosen, onChoose, onClose, WIDTH_DP);
+    }
+
     /**
      * A menu of sections: {@code onChoose} gets the index in {@code rows} of the one chosen, and
      * {@code chosen} (-1: none) is the index of the one to tick.
      */
-    static ListPopupWindow show(View anchor, String title, List<Row> rows, int chosen, OnChoose onChoose,
+    static PopupWindow show(View anchor, String title, List<Row> rows, int chosen, OnChoose onChoose,
             Runnable onClose, int widthDp) {
-        float dp = anchor.getResources().getDisplayMetrics().density;
-        List<Row> all = new java.util.ArrayList<>();
-        all.add(new Row(title, "", Row.TITLE));
+        Context context = anchor.getContext();
+        float dp = context.getResources().getDisplayMetrics().density;
+        List<Row> all = new ArrayList<>();
+        int offset = title != null ? 1 : 0;
+        if (title != null) all.add(new Row(title, "", Row.TITLE));
         all.addAll(rows);
-        LayoutInflater inflater = LayoutInflater.from(anchor.getContext());
-        ListPopupWindow popup = new ListPopupWindow(anchor.getContext());
-        popup.setAdapter(new BaseAdapter() {
+        LayoutInflater inflater = LayoutInflater.from(context);
+        ListView list = new ListView(context);
+        list.setAdapter(new BaseAdapter() {
             @Override
             public int getCount() {
                 return all.size();
@@ -107,81 +124,30 @@ final class ChoiceMenu {
                 View view = convertView != null ? convertView : inflater.inflate(R.layout.choice_row, parent, false);
                 ((TextView) view.findViewById(R.id.choice_title)).setText(row.text);
                 ((TextView) view.findViewById(R.id.choice_detail)).setText(row.detail);
-                view.findViewById(R.id.choice_tick).setVisibility(position - 1 == chosen ? View.VISIBLE : View.INVISIBLE);
+                view.findViewById(R.id.choice_tick).setVisibility(position - offset == chosen ? View.VISIBLE : View.INVISIBLE);
                 return view;
             }
         });
-        int height = 8;
-        for (Row row : all) height += row.type == Row.TITLE ? 46 : row.type == Row.HEADING ? 30 : 42;
-        popup.setAnchorView(anchor);
-        popup.setDropDownGravity(Gravity.START);
-        popup.setWidth(Math.round(widthDp * dp));
-        popup.setHeight(Math.round(Math.min(440, height) * dp));
-        popup.setBackgroundDrawable(anchor.getContext().getDrawable(R.drawable.filter_popup));
-        popup.setModal(true);
-        popup.setOnItemClickListener((parent, view, which, id) -> {
+        list.setDivider(null);
+        list.setSelector(android.R.color.transparent);
+        list.setVerticalScrollBarEnabled(false);
+        list.setClipToPadding(false);
+        int padding = Math.round(24 * dp);
+        list.setPadding(0, padding, 0, padding);
+        PopupWindow popup = new PopupWindow(list, Math.round(widthDp * dp), ViewGroup.LayoutParams.MATCH_PARENT, true);
+        popup.setBackgroundDrawable(context.getDrawable(R.drawable.choice_sheet));
+        popup.setAnimationStyle(R.style.ChoiceSheet);
+        list.setOnItemClickListener((parent, view, which, id) -> {
             if (all.get(which).type != Row.CHOICE) return;
-            popup.dismiss();
-            onChoose.choose(which - 1);
-        });
-        if (onClose != null) popup.setOnDismissListener(onClose::run);
-        popup.show();
-        if (popup.getListView() != null) {
-            popup.getListView().setSelector(android.R.color.transparent);
-            popup.getListView().setDivider(null);
-            int first = 1;
-            while (first < all.size() - 1 && all.get(first).type != Row.CHOICE) first++;
-            popup.getListView().setSelection(chosen >= 0 ? chosen + 1 : first);
-            popup.getListView().requestFocus();
-        }
-        return popup;
-    }
-
-    /**
-     * Shows {@code labels} by {@code anchor}, the {@code chosen} one marked; closing it without
-     * a choice calls {@code onClose} (may be null).
-     */
-    static ListPopupWindow show(View anchor, String title, List<String> labels, int chosen,
-            OnChoose onChoose, Runnable onClose) {
-        float dp = anchor.getResources().getDisplayMetrics().density;
-        ListPopupWindow popup = new ListPopupWindow(anchor.getContext());
-        List<String> rows = new java.util.ArrayList<>();
-        if (title != null) rows.add(title);
-        rows.addAll(labels);
-        int offset = title != null ? 1 : 0;
-        popup.setAdapter(new ArrayAdapter<String>(anchor.getContext(), R.layout.filter_option, rows) {
-            @Override
-            public boolean isEnabled(int position) {
-                return position >= offset;
-            }
-
-            @NonNull
-            @Override
-            public View getView(int position, View convertView, @NonNull ViewGroup parent) {
-                View view = super.getView(position, convertView, parent);
-                view.setActivated(position - offset == chosen);
-                view.setAlpha(position < offset ? 0.6f : 1f);
-                return view;
-            }
-        });
-        popup.setAnchorView(anchor);
-        popup.setDropDownGravity(Gravity.START);
-        popup.setWidth(Math.round(300 * dp));
-        popup.setHeight(Math.round(Math.min(380, rows.size() * 34 + 8) * dp));
-        popup.setBackgroundDrawable(anchor.getContext().getDrawable(R.drawable.filter_popup));
-        popup.setModal(true);
-        popup.setOnItemClickListener((parent, view, which, id) -> {
-            if (which < offset) return;
             popup.dismiss();
             onChoose.choose(which - offset);
         });
         if (onClose != null) popup.setOnDismissListener(onClose::run);
-        popup.show();
-        if (popup.getListView() != null) {
-            popup.getListView().setSelector(android.R.color.transparent);
-            popup.getListView().setSelection(Math.max(offset, chosen + offset));
-            popup.getListView().requestFocus();
-        }
+        popup.showAtLocation(anchor, Gravity.END | Gravity.TOP, 0, 0);
+        int first = offset;
+        while (first < all.size() - 1 && all.get(first).type != Row.CHOICE) first++;
+        list.setSelection(chosen >= 0 ? chosen + offset : first);
+        list.requestFocus();
         return popup;
     }
 }

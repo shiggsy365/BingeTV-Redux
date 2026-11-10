@@ -1,9 +1,16 @@
 package com.shiggsy365.bingetvredux;
 
+import android.graphics.drawable.Drawable;
+import android.view.View;
 import android.widget.ImageView;
+import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.DataSource;
+import com.bumptech.glide.load.engine.GlideException;
 import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
+import com.bumptech.glide.request.RequestListener;
+import com.bumptech.glide.request.target.Target;
 
 /** Artwork from addons, loaded and cached by Glide at the size it's shown. */
 public final class Images {
@@ -46,5 +53,33 @@ public final class Images {
         }
         Glide.with(view).load(url).transition(DrawableTransitionOptions.withCrossFade(250))
                 .into(view);
+    }
+
+    /** A title's logo, fading in; with no logo, or one that won't load, {@code name} shows instead. */
+    public static void logo(ImageView logo, TextView name, String url) {
+        boolean hasLogo = url != null && !url.isEmpty();
+        name.setVisibility(hasLogo ? View.GONE : View.VISIBLE);
+        logo.setVisibility(hasLogo ? View.VISIBLE : View.GONE);
+        if (!hasLogo) {
+            Glide.with(logo).clear(logo);
+            logo.setImageDrawable(null);
+            return;
+        }
+        Glide.with(logo).load(url).transition(DrawableTransitionOptions.withCrossFade(250))
+                .listener(new RequestListener<Drawable>() {
+                    @Override
+                    public boolean onLoadFailed(GlideException e, Object model, Target<Drawable> target,
+                            boolean isFirstResource) {
+                        logo.setVisibility(View.GONE);
+                        name.setVisibility(View.VISIBLE);
+                        return false;
+                    }
+
+                    @Override
+                    public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target,
+                            DataSource dataSource, boolean isFirstResource) {
+                        return false;
+                    }
+                }).into(logo);
     }
 }

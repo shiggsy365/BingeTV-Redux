@@ -66,11 +66,19 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     private String mPageProfile = "";
     private int mWatchVersion;
     private MetaItem mHeroItem;
+    // The focus has been put on the first card, as the app opened.
+    private boolean mOpened;
     private View mHero;
     private View mBackdropDim;
     // The menu bar has the focus: one random title of the first row fills the screen, dimmed,
     // without the windowed artwork or the title's details.
     private boolean mMenuMode;
+    private static final long MENU_FOCUS_MS = 160;
+    private static final long ENTER_ROWS_MS = 120;
+    private View mMenuPill;
+    private TextView mMenuCaption;
+    // The menu item Down was pressed on, until its page's rows are in.
+    private View mEnteringFrom;
     private MetaItem mPendingHero;
     private final Runnable mShowHero = () -> bindHero(mPendingHero);
     private HeroTrailer mTrailer;
@@ -95,12 +103,10 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         mTimeFormat = android.text.format.DateFormat.getTimeFormat(this);
         mMenu = findViewById(R.id.menu_items);
         View logo = findViewById(R.id.menu_logo);
-        logo.setOnClickListener(v -> startActivity(new Intent(this, MainActivity.class)));
-        logo.setOnFocusChangeListener((v, focused) -> {
-            findViewById(R.id.menu_logo_underline).animate().alpha(focused ? 1f : 0f)
-                    .setDuration(160).start();
-            v.post(this::updateMenuMode);
-        });
+        logo.setOnClickListener(v -> startActivity(new Intent(this, ProfilesActivity.class)));
+        logo.setOnFocusChangeListener((v, focused) -> v.post(this::updateMenuMode));
+        mMenuPill = findViewById(R.id.menu_pill);
+        mMenuCaption = findViewById(R.id.menu_caption);
         mClock = findViewById(R.id.clock);
         mBackdrop = findViewById(R.id.backdrop);
         mBackdropFull = findViewById(R.id.backdrop_full);
@@ -125,7 +131,11 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
             if (event.getAction() == KeyEvent.ACTION_DOWN) focusMenu();
             return true;
         });
-        mRows.setOnChanged(this::updateEmpty);
+        mRows.setOnChanged(() -> {
+            updateEmpty();
+            focusFirstCard();
+            enterRows();
+        });
         GuideStore.addListener(mGuideChanged);
         mTrailer = new HeroTrailer(this, findViewById(R.id.hero_video), mBackdrop, mBackdropFull,
                 findViewById(R.id.clock));
@@ -270,7 +280,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         addMenuItem(PAGE_SEARCH, "Search", MenuIcons.SEARCH);
         // Radio or a podcast playing (or paused): back to it from here.
         if (AudioPlayer.active()) addMenuItem(PAGE_NOW_PLAYING, "Now playing", MenuIcons.NOW_PLAYING);
-        // Profiles and settings are behind the logo (MainActivity).
+        // Profiles are behind the logo (ProfilesActivity), and Settings behind those.
         // A hub that's gone (no catalogs left) falls back to Home.
         if (mMenu.findViewWithTag(mPage) == null) mPage = PAGE_HOME;
         markMenu();
@@ -284,17 +294,27 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         View item = LayoutInflater.from(this).inflate(R.layout.menu_item, mMenu, false);
         ((ImageView) item.findViewById(R.id.menu_icon)).setImageDrawable(
                 MenuIcons.drawable(this, iconPath, 22));
-        ((TextView) item.findViewById(R.id.menu_label)).setText(label);
         item.setContentDescription(label);
         item.setTag(page);
         item.setOnClickListener(v -> openPage(page));
         item.setOnFocusChangeListener((v, focused) -> {
-            // The bar widens smoothly as the focused item shows its name.
-            android.transition.TransitionManager.beginDelayedTransition(mMenu,
-                    new android.transition.ChangeBounds().setDuration(160));
             styleMenuItem(v);
+            if (focused) showMenuFocus(v);
             // Once the focus has settled: still somewhere on the bar, or gone to the rows.
-            v.post(this::updateMenuMode);
+            v.post(() -> {
+                if (!mMenu.hasFocus()) hideMenuFocus();
+                updateMenuMode();
+            });
+        });
+        // Down goes into the page under the focus, not back into the one on screen.
+        item.setOnKeyListener((v, keyCode, event) -> {
+            if (keyCode != KeyEvent.KEYCODE_DPAD_DOWN || page.equals(mPage)) return false;
+            if (event.getAction() == KeyEvent.ACTION_DOWN && !opensElsewhere(page)) {
+                mEnteringFrom = v;
+                showPage(page);
+                enterRows();
+            }
+            return true;
         });
         mMenu.addView(item);
     }
@@ -303,18 +323,46 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         for (int i = 0; i < mMenu.getChildCount(); i++) styleMenuItem(mMenu.getChildAt(i));
     }
 
-    /**
-     * Focused: its name shows, beside a white icon, over the red underline. The page on screen:
-     * a white icon. Others: a dimmer icon.
-     */
+    /** The page on screen has a white icon and a red mark; focused, white; others, dimmer. */
     private void styleMenuItem(View item) {
-        boolean focused = item.hasFocus();
         boolean current = mPage.equals(item.getTag());
-        item.findViewById(R.id.menu_label).setVisibility(focused ? View.VISIBLE : View.GONE);
         ((ImageView) item.findViewById(R.id.menu_icon)).setColorFilter(
-                focused || current ? 0xFFFFFFFF : 0xB3FFFFFF);
-        View underline = item.findViewById(R.id.menu_underline);
-        underline.animate().alpha(focused ? 1f : 0f).setDuration(160).start();
+                item.hasFocus() || current ? 0xFFFFFFFF : 0x8CFFFFFF);
+        item.findViewById(R.id.menu_marker).setVisibility(current ? View.VISIBLE : View.INVISIBLE);
+    }
+
+    /** The pill slides to the focused item, its name under it; nothing on the bar moves. */
+    private void showMenuFocus(View item) {
+        float pillX = item.getLeft();
+        float captionX = pillX + (item.getWidth() - mMenuCaption.getWidth()) / 2f;
+        mMenuCaption.setText(item.getContentDescription());
+        if (mMenuPill.getAlpha() == 0f) {
+            mMenuPill.setTranslationX(pillX);
+            mMenuCaption.setTranslationX(captionX);
+        }
+        mMenuPill.animate().translationX(pillX).alpha(1f).setDuration(MENU_FOCUS_MS).start();
+        mMenuCaption.animate().translationX(captionX).alpha(1f).setDuration(MENU_FOCUS_MS).start();
+    }
+
+    private void hideMenuFocus() {
+        mMenuPill.animate().alpha(0f).setDuration(MENU_FOCUS_MS).start();
+        mMenuCaption.animate().alpha(0f).setDuration(MENU_FOCUS_MS).start();
+    }
+
+    /** Pages that are a screen of their own rather than rows here. */
+    private static boolean opensElsewhere(String page) {
+        return PAGE_LIVE.equals(page) || PAGE_SEARCH.equals(page) || PAGE_NOW_PLAYING.equals(page);
+    }
+
+    /** After Down on the menu bar: into the new page's rows once they're in, if still wanted. */
+    private void enterRows() {
+        View from = mEnteringFrom;
+        if (from == null) return;
+        // Rows still loading have nothing to focus: this comes round again as each one arrives.
+        mRowsView.postDelayed(() -> {
+            if (mEnteringFrom != from || isDestroyed()) return;
+            if (!from.hasFocus() || mRowsView.requestFocus()) mEnteringFrom = null;
+        }, ENTER_ROWS_MS);
     }
 
     private void focusMenu() {
@@ -357,7 +405,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     }
 
     /** On Home, rows of different types can share a name ("Popular"), so the type is added. */
-    private static String homeTitle(AddonStore.Entry e) {
+    static String homeTitle(AddonStore.Entry e) {
         String name = e.addon.displayName(e.catalog);
         String type = "movie".equals(e.catalog.type) ? "Movies"
                 : "series".equals(e.catalog.type) ? "TV" : null;
@@ -396,9 +444,26 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         mRows.setRows(pageRows(page));
         // On the menu bar, the artwork comes from this page's rows (e.g. another profile's).
         if (mMenuMode) {
+            boolean audio = isAudioPage(page);
+            mBackdrop.setAlpha(audio ? 1f : 0f);
+            mHero.setAlpha(audio ? 1f : 0f);
+            mBackdropDim.setAlpha(audio ? 1f : 0.7f);
             Images.fade(mBackdropFull, null);
             pickMenuArt(0);
         }
+    }
+
+    /** The app opens on the first card, once there is one, unless the focus has moved on. */
+    private void focusFirstCard() {
+        if (mOpened || mRows.shownCount() == 0) return;
+        View focus = getCurrentFocus();
+        if (focus != null && focus != findViewById(R.id.menu_logo)) {
+            mOpened = true;
+            return;
+        }
+        mRowsView.post(() -> {
+            if (!mOpened && !isDestroyed() && mRowsView.requestFocus()) mOpened = true;
+        });
     }
 
     private void updateEmpty() {
@@ -410,7 +475,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
                     : "Loading…");
         } else if (Stremio.addons(this).all().isEmpty()) {
             mEmpty.setText("Add your Stremio addons to fill this page.\n\n"
-                    + "Select the logo at the top left for the web page's address and PIN, then use its Addons page.");
+                    + "Select the logo at the top left, then Settings, for the web page's address and PIN. Then use its Addons page.");
         } else if (!mRows.allLoaded() || !WatchStore.isOpen()) {
             mEmpty.setText("Loading…");
         } else {
@@ -426,6 +491,25 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         mPendingHero = item;
         mHandler.removeCallbacks(mShowHero);
         mHandler.postDelayed(mShowHero, HERO_DELAY_MS);
+    }
+
+    @Override
+    public void onSeeAllFocused(String title) {
+        if (mMenuMode || isDestroyed()) return;
+        mHandler.removeCallbacks(mShowHero);
+        mPendingHero = null;
+        mHeroItem = null;
+        mTrailer.show(null);
+        Images.load(mHeroLogo, null);
+        mHeroLogo.setVisibility(View.GONE);
+        mHeroTitle.setText(title);
+        mHeroTitle.setVisibility(View.VISIBLE);
+        mHeroSubtitle.setText("See the whole catalog");
+        mHeroSubtitle.setVisibility(View.VISIBLE);
+        mHeroSubtitle2.setVisibility(View.GONE);
+        InfoChips.fill(mHeroFacts, new ArrayList<>());
+        InfoChips.fill(mHeroGenres, new ArrayList<>());
+        mHeroDesc.setText(null);
     }
 
     @Override
@@ -458,12 +542,13 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         mMenuMode = onBar;
         long ms = 250;
         if (mMenuMode) {
+            boolean audio = isAudioPage(mPage);
             mHandler.removeCallbacks(mShowHero);
             mTrailer.show(null);
             pickMenuArt(0);
-            mBackdrop.animate().alpha(0f).setDuration(ms).start();
-            mHero.animate().alpha(0f).setDuration(ms).start();
-            mBackdropDim.animate().alpha(0.7f).setDuration(ms).start();
+            mBackdrop.animate().alpha(audio ? 1f : 0f).setDuration(ms).start();
+            mHero.animate().alpha(audio ? 1f : 0f).setDuration(ms).start();
+            mBackdropDim.animate().alpha(audio ? 1f : 0.7f).setDuration(ms).start();
         } else {
             mBackdrop.animate().alpha(1f).setDuration(ms).start();
             mHero.animate().alpha(1f).setDuration(ms).start();
@@ -476,14 +561,16 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     }
 
     /**
-     * While the menu bar has focus: a random title of the first row, full screen. The rows may
-     * still be loading (after a profile switch, say), so it tries again for a few seconds.
+     * While the menu bar has focus: a random title of the first row, full screen, or on Radio
+     * and Podcasts, whose artwork is too small for that, its details. The rows may still be
+     * loading (after a profile switch, say), so it tries again for a few seconds.
      */
     private void pickMenuArt(int attempt) {
-        // Station logos and podcast squares make poor full-screen art.
-        if (!mMenuMode || isDestroyed() || isAudioPage(mPage)) return;
+        if (!mMenuMode || isDestroyed()) return;
         MetaItem pick = mRows.randomFirstItem();
-        if (pick != null) {
+        if (pick != null && isAudioPage(mPage)) {
+            bindHero(pick);
+        } else if (pick != null) {
             Images.fade(mBackdropFull, pick.background.isEmpty() ? pick.poster : pick.background);
         } else if (attempt < 20) {
             mHandler.postDelayed(() -> pickMenuArt(attempt + 1), 500);
@@ -491,7 +578,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     }
 
     private void bindHero(MetaItem item) {
-        if (mMenuMode) {
+        if (mMenuMode && !isAudioPage(mPage)) {
             // Shown when the focus goes back to the rows.
             mPendingHero = item;
             return;
@@ -515,12 +602,11 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         String art = !item.background.isEmpty() ? item.background
                 : item.id.startsWith(HomeRows.LIVE_PREFIX) || item.id.startsWith(Radio.PREFIX) ? null
                 : item.poster;
-        Images.fade(mBackdrop, art);
+        // Square podcast artwork is too small to show large: only the soft, dimmed layer.
+        Images.fade(mBackdrop, isAudioPage(mPage) ? null : art);
         Images.fadeSoft(mBackdropFull, art);
         mHeroTitle.setText(item.name);
-        mHeroTitle.setVisibility(item.logo.isEmpty() ? View.VISIBLE : View.GONE);
-        mHeroLogo.setVisibility(item.logo.isEmpty() ? View.GONE : View.VISIBLE);
-        Images.fade(mHeroLogo, item.logo);
+        Images.logo(mHeroLogo, mHeroTitle, item.logo);
         // A second line (a channel's "On Next") gets a line of its own, each cut short if long.
         String[] lines = item.subtitle.split("\n", 2);
         mHeroSubtitle.setText(lines[0]);

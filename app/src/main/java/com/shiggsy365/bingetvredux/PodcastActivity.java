@@ -63,6 +63,9 @@ public class PodcastActivity extends Activity {
         });
         for (View button : new View[] {mSubscribe, mListened}) {
             button.setOnFocusChangeListener((v, focused) -> showButtons());
+            button.setNextFocusDownId(R.id.episodes);
+            // Until the episodes are in, so an early OK can't subscribe.
+            button.setFocusable(false);
         }
         showButtons();
         ((ImageView) findViewById(R.id.artwork)).setClipToOutline(true);
@@ -80,7 +83,6 @@ public class PodcastActivity extends Activity {
             showButtons();
             Toast.makeText(this, now ? "Subscribed to " + p.title : "Unsubscribed", Toast.LENGTH_SHORT).show();
         });
-        mSubscribe.requestFocus();
         load();
     }
 
@@ -110,8 +112,11 @@ public class PodcastActivity extends Activity {
             String message = error;
             runOnUiThread(() -> {
                 if (isDestroyed()) return;
+                mSubscribe.setFocusable(true);
+                mListened.setFocusable(true);
                 if (loaded == null) {
                     mStatus.setText(message);
+                    mSubscribe.requestFocus();
                     return;
                 }
                 mFeed = loaded;
@@ -119,6 +124,8 @@ public class PodcastActivity extends Activity {
                 mEpisodes.clear();
                 mEpisodes.addAll(loaded.episodes);
                 showEpisodes();
+                if (mList.getAdapter().getItemCount() > 0) mList.requestFocus();
+                else mSubscribe.requestFocus();
             });
         });
     }

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Behind the menu bar's logo: the same pill as its items, when focused. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:enterFadeDuration="160"
+    android:exitFadeDuration="160">
+    <item android:drawable="@drawable/menu_pill" android:state_focused="true" />
+    <item android:drawable="@android:color/transparent" />
+</selector>

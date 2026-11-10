@@ -72,14 +72,11 @@ public class StreamsActivity extends Activity {
         mFilters = findViewById(R.id.filters);
         mFilename = findViewById(R.id.filename);
         MetaItem meta = mPlayback.meta;
-        boolean hasLogo = !meta.logo.isEmpty();
         for (int[] ids : new int[][]{{R.id.searching_logo, R.id.searching_title}, {R.id.logo, R.id.title}}) {
             ImageView logo = findViewById(ids[0]);
             TextView title = findViewById(ids[1]);
             title.setText(mPlayback.title());
-            title.setVisibility(hasLogo ? View.GONE : View.VISIBLE);
-            logo.setVisibility(hasLogo ? View.VISIBLE : View.GONE);
-            Images.fade(logo, meta.logo);
+            Images.logo(logo, title, meta.logo);
         }
         Images.fade(findViewById(R.id.backdrop), meta.background.isEmpty() ? meta.poster : meta.background);
         mStatus.setText("Searching for streams…");
@@ -128,7 +125,13 @@ public class StreamsActivity extends Activity {
     }
 
     private List<Stream> arrange(Streams.Found found, Streams.Prefs prefs) {
-        return sameSourceFirst(Streams.prepare(found.streams, prefs), mPlayback.bingeGroup);
+        return arranged(this, found, prefs, mPlayback.bingeGroup);
+    }
+
+    /** In the order they'd be played: the next episode's own source first, or else what suits this TV. */
+    static List<Stream> arranged(Context context, Streams.Found found, Streams.Prefs prefs, String bingeGroup) {
+        List<Stream> streams = StreamPick.forThisScreen(context, Streams.prepare(found.streams, prefs));
+        return bingeGroup.isEmpty() ? StreamPick.bestFirst(context, streams) : sameSourceFirst(streams, bingeGroup);
     }
 
     /** Streams from the given source group first (for the next episode of a show). */
@@ -193,7 +196,7 @@ public class StreamsActivity extends Activity {
     }
 
     /**
-     * The cards in two columns, under tabs that filter them. Called again as more addons answer
+     * The rows, the recommended one first, under tabs that filter them. Called again as more addons answer
      * ({@code waiting} still to come): the focused stream stays focused, on the same tab.
      */
     private void showList(List<Stream> streams, int waiting) {
@@ -230,15 +233,14 @@ public class StreamsActivity extends Activity {
             }
             return;
         }
-        mCards = new StreamCards.Adapter(mStreams, mInfos, -1, this::play,
-                info -> mFilename.setText(info.filename.isEmpty() ? info.details.replace('\n', ' ') : info.filename));
-        mList.setNumColumns(2);
-        mList.setHorizontalSpacing(Math.round(8 * getResources().getDisplayMetrics().density));
-        mList.setVerticalSpacing(Math.round(10 * getResources().getDisplayMetrics().density));
+        mCards = new StreamCards.Adapter(mStreams, mInfos, -1, this::play, info -> mFilename.setText(StreamCards.source(info)));
+        if (mStreams.size() > 1 && mPlayback.bingeGroup.isEmpty()) mCards.setBest("Best for this TV");
+        mList.setNumColumns(1);
+        mList.setVerticalSpacing(Math.round(6 * getResources().getDisplayMetrics().density));
         mList.setAdapter(mCards);
         // Up from the top row goes to the tabs (the grid keeps Up to itself otherwise).
         mList.setOnKeyInterceptListener(event -> {
-            if (event.getKeyCode() != KeyEvent.KEYCODE_DPAD_UP || mList.getSelectedPosition() >= 2
+            if (event.getKeyCode() != KeyEvent.KEYCODE_DPAD_UP || mList.getSelectedPosition() >= 1
                     || mFilterLabels.size() < 2) {
                 return false;
             }

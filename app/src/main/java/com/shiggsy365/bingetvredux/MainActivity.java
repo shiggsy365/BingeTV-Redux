@@ -7,15 +7,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.format.DateUtils;
-import android.view.LayoutInflater;
-import android.view.View;
-import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
 
-import androidx.annotation.NonNull;
-import androidx.leanback.widget.HorizontalGridView;
-import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.EncodeHintType;
@@ -24,15 +18,12 @@ import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 
 import java.util.Collections;
-import java.util.List;
-import java.util.Locale;
 
 /**
- * Profiles and settings, opened from the logo on the menu bar. The top half picks who's
- * watching. The bottom half is how to open the web page, where accounts, addons, channels and
- * everything else are set up: the address, a QR code that opens it with the PIN filled in, and
- * the PIN, which can be changed; "Forget all browsers" makes every browser enter it again. And
- * a check for a newer version.
+ * Settings, opened from the profile picker and nowhere else: how to open the web page, where
+ * accounts, addons, channels and everything else are set up: the address, a QR code that opens
+ * it with the PIN filled in, and the PIN, which can be changed; "Forget all browsers" makes
+ * every browser enter it again. And a check for a newer version.
  */
 public class MainActivity extends Activity {
     private static final long STATUS_TICK_MS = 1_000;
@@ -77,49 +68,7 @@ public class MainActivity extends Activity {
         findViewById(R.id.updates).setOnClickListener(v -> Updates.check(this, true));
         ((TextView) findViewById(R.id.version)).setText("BingeTV Redux " + BuildConfig.VERSION_NAME
                 + "  ·  Profile: " + Profiles.current(this).name);
-        showProfiles();
-    }
-
-    /** Who's watching: picking a profile switches to it and goes back to Home. */
-    private void showProfiles() {
-        List<Profiles.Profile> profiles = Profiles.all(this);
-        String current = Profiles.current(this).id;
-        HorizontalGridView grid = findViewById(R.id.profiles);
-        ProfileCarousel.setUp(grid);
-        grid.setAdapter(new RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-            @NonNull
-            @Override
-            public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-                return new RecyclerView.ViewHolder(LayoutInflater.from(parent.getContext())
-                        .inflate(R.layout.profile_tile, parent, false)) {};
-            }
-
-            @Override
-            public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
-                Profiles.Profile p = profiles.get(position);
-                View avatar = holder.itemView.findViewById(R.id.avatar);
-                Avatars.bind(avatar, p);
-                TextView name = holder.itemView.findViewById(R.id.name);
-                boolean isCurrent = p.id.equals(current);
-                name.setText(isCurrent ? p.name + "  ✓" : p.name);
-                name.setTextColor(getColor(isCurrent ? R.color.guide_accent : R.color.guide_text));
-                avatar.setOnClickListener(v -> {
-                    if (!isCurrent) Profiles.setCurrent(MainActivity.this, p.id);
-                    finish();
-                });
-                ProfileCarousel.style(holder.itemView, avatar.hasFocus(), false);
-                avatar.setOnFocusChangeListener((v, focused) -> ProfileCarousel.style(holder.itemView, focused, true));
-            }
-
-            @Override
-            public int getItemCount() {
-                return profiles.size();
-            }
-        });
-        for (int i = 0; i < profiles.size(); i++) {
-            if (profiles.get(i).id.equals(current)) grid.setSelectedPosition(i);
-        }
-        grid.requestFocus();
+        findViewById(R.id.sync).requestFocus();
     }
 
     @Override

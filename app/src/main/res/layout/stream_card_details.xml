@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A focused stream's details, under its row: addon, then quality, audio and source. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/card_details"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingBottom="9dp"
+    android:visibility="gone">
+
+    <TextView
+        android:id="@+id/card_title"
+        android:layout_width="match_parent"
+        android:layout_height="21dp"
+        android:ellipsize="end"
+        android:gravity="center_vertical"
+        android:singleLine="true"
+        android:textColor="#FFFFFFFF"
+        android:textSize="16sp" />
+
+    <TextView
+        android:id="@+id/card_line1"
+        style="@style/StreamCardLine"
+        android:layout_marginTop="2dp" />
+
+    <TextView
+        android:id="@+id/card_line2"
+        style="@style/StreamCardLine" />
+
+    <TextView
+        android:id="@+id/card_line3"
+        style="@style/StreamCardLine" />
+</LinearLayout>

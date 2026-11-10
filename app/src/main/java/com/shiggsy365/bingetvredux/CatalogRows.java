@@ -35,6 +35,10 @@ public final class CatalogRows {
         void onItemFocused(MetaItem item);
 
         void onItemClicked(MetaItem item);
+
+        /** A row's "See all" card has the focus, instead of a poster. */
+        default void onSeeAllFocused(String title) {
+        }
     }
 
     /** A row's items again, better (e.g. with the first metadata addon's details). */
@@ -459,6 +463,8 @@ public final class CatalogRows {
 
         @Override
         public void onBindViewHolder(@NonNull PosterHolder holder, int position) {
+            View caption = holder.itemView.findViewById(R.id.card_caption);
+            caption.setVisibility(View.GONE);
             if (getItemViewType(position) == TYPE_PLACEHOLDER) {
                 ViewGroup.LayoutParams lp = holder.itemView.getLayoutParams();
                 lp.width = holder.itemView.getResources().getDimensionPixelSize(R.dimen.poster_width);
@@ -488,6 +494,8 @@ public final class CatalogRows {
                         CatalogActivity.intent(mActivity, mRow.entry, mRow.title)));
                 holder.itemView.setOnFocusChangeListener((v, focused) -> {
                     CardFocus.apply(v, focused, CardFocus.POSTER);
+                    // Posted so it comes after the hero's return from the menu bar.
+                    if (focused) v.post(() -> mListener.onSeeAllFocused(mRow.title));
                 });
                 return;
             }
@@ -511,6 +519,11 @@ public final class CatalogRows {
             holder.image.setPadding(pad, pad, pad, pad);
             Images.load(holder.image, item.poster);
             Badges.bind(holder.itemView, item);
+            if (item.id.startsWith(Podcasts.EPISODE_PREFIX)) {
+                caption.setVisibility(View.VISIBLE);
+                ((TextView) holder.itemView.findViewById(R.id.card_caption_title)).setText(item.name);
+                ((TextView) holder.itemView.findViewById(R.id.card_caption_age)).setText(AudioRows.episodeAge(item));
+            }
             holder.itemView.setOnClickListener(v -> mListener.onItemClicked(item));
             holder.itemView.setOnFocusChangeListener((v, focused) -> {
                 CardFocus.apply(v, focused, CardFocus.POSTER);

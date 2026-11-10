@@ -242,11 +242,8 @@ public class CatalogActivity extends Activity {
 
     /** The top left follows the focused title: its logo, else its name, and its description. */
     private void showFocused(MetaItem item) {
-        boolean hasLogo = !item.logo.isEmpty();
         mFocusedTitle.setText(item.name);
-        mFocusedTitle.setVisibility(hasLogo ? View.GONE : View.VISIBLE);
-        mFocusedLogo.setVisibility(hasLogo ? View.VISIBLE : View.GONE);
-        Images.fade(mFocusedLogo, item.logo);
+        Images.logo(mFocusedLogo, mFocusedTitle, item.logo);
         mFocusedDesc.setText(item.description);
     }
 

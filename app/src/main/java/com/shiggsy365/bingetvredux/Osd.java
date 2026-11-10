@@ -8,7 +8,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ListPopupWindow;
+import android.widget.PopupWindow;
 import android.widget.TextView;
 
 import androidx.annotation.OptIn;
@@ -128,7 +128,8 @@ final class Osd {
     private final LinearLayout mButtons;
     private final List<Button> mAll = new ArrayList<>();
     private ImageView mPlayPause;
-    private ListPopupWindow mMenu;
+    private PopupWindow mMenu;
+    private List<SkipTimes.Segment> mMarks = new ArrayList<>();
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final Runnable mHide = this::hide;
     private final Runnable mTick = new Runnable() {
@@ -187,11 +188,8 @@ final class Osd {
 
     /** The banner: logo (or title), the line under it, genres and plot. */
     void setInfo(String title, String logo, String line, String genres, String plot) {
-        boolean hasLogo = logo != null && !logo.isEmpty();
         mTitle.setText(title);
-        mTitle.setVisibility(hasLogo ? View.GONE : View.VISIBLE);
-        mLogo.setVisibility(hasLogo ? View.VISIBLE : View.GONE);
-        Images.load(mLogo, logo);
+        Images.logo(mLogo, mTitle, logo);
         mLine.setText(line);
         mLine.setVisibility(line == null || line.isEmpty() ? View.GONE : View.VISIBLE);
         mGenres.setText(genres);
@@ -203,6 +201,12 @@ final class Osd {
     void setSubtitles(SubtitleDriver driver, List<com.shiggsy365.bingetvredux.stremio.Subtitles.Track> addonTracks) {
         mSubtitles = driver;
         mAddonSubtitles = addonTracks == null ? new ArrayList<>() : addonTracks;
+        if (addonTracks != null) driver.setAddonTracks(addonTracks);
+    }
+
+    /** The parts of the video that can be skipped, marked on the progress line. */
+    void setMarks(List<SkipTimes.Segment> segments) {
+        mMarks = segments;
     }
 
     /** A logo already loaded (live TV's channel logos). */
@@ -233,7 +237,7 @@ final class Osd {
             onClick.run();
         });
         view.setOnFocusChangeListener((v, focused) -> {
-            if (focused) mCaption.setText(v.getContentDescription());
+            if (focused) mCaption.setText(caption(v));
         });
         // Up from any button goes to the progress line, to seek.
         view.setOnKeyListener((v, keyCode, event) -> {
@@ -471,6 +475,12 @@ final class Osd {
         }
         mSeek.setVisibility(View.VISIBLE);
         mTime.setText(DetailsActivity.clock(position) + " / " + DetailsActivity.clock(duration));
+        float[] marks = new float[mMarks.size() * 2];
+        for (int i = 0; i < mMarks.size(); i++) {
+            marks[2 * i] = mMarks.get(i).startMs / (float) duration;
+            marks[2 * i + 1] = Math.min(1f, mMarks.get(i).endMs / (float) duration);
+        }
+        mSeek.setMarks(marks);
         mSeek.set(position / (float) duration, timeline != null ? 0
                 : player.getBufferedPosition() / (float) duration);
         long left = (long) ((duration - position) / Math.max(0.1f, speed));
@@ -490,6 +500,11 @@ final class Osd {
             mMenu = null;
             scheduleHide();
             anchor.requestFocus();
+            mCaption.setText(caption(anchor));
+            // A new track takes a moment to be the current one.
+            mHandler.postDelayed(() -> {
+                if (anchor.isFocused()) mCaption.setText(caption(anchor));
+            }, 500);
         };
         List<String> labels = new ArrayList<>();
         int chosen = -1;
@@ -565,22 +580,29 @@ final class Osd {
             rows.add(ChoiceMenu.Row.heading("From addons"));
             choices.add(null);
         }
-        // Addons offer several of one language, told apart by number.
+        // Addons offer several of one language, told apart by number; the best fit comes first.
         java.util.Map<String, Integer> sameKind = new java.util.HashMap<>();
+        java.util.Map<com.shiggsy365.bingetvredux.stremio.Subtitles.Track, Integer> numbers = new java.util.HashMap<>();
+        java.util.Map<String, List<com.shiggsy365.bingetvredux.stremio.Subtitles.Track>> languages = new java.util.LinkedHashMap<>();
         for (com.shiggsy365.bingetvredux.stremio.Subtitles.Track t : mAddonSubtitles) {
             String kind = t.lang + "|" + t.addon;
-            sameKind.put(kind, sameKind.containsKey(kind) ? sameKind.get(kind) + 1 : 1);
+            int number = sameKind.containsKey(kind) ? sameKind.get(kind) + 1 : 1;
+            sameKind.put(kind, number);
+            numbers.put(t, number);
+            if (!languages.containsKey(t.lang)) languages.put(t.lang, new ArrayList<>());
+            languages.get(t.lang).add(t);
         }
-        java.util.Map<String, Integer> numbered = new java.util.HashMap<>();
-        for (com.shiggsy365.bingetvredux.stremio.Subtitles.Track t : mAddonSubtitles) {
-            if (t == mSubtitles.external()) chosen = rows.size();
-            String language = t.lang.isEmpty() ? "" : new Locale(t.lang).getDisplayLanguage(Locale.UK);
-            String kind = t.lang + "|" + t.addon;
-            int number = numbered.containsKey(kind) ? numbered.get(kind) + 1 : 1;
-            numbered.put(kind, number);
-            rows.add(ChoiceMenu.Row.choice(language.isEmpty() ? "Subtitles" : language,
-                    t.addon + (sameKind.get(kind) > 1 ? "  ·  " + number : "")));
-            choices.add(t);
+        for (List<com.shiggsy365.bingetvredux.stremio.Subtitles.Track> tracks : languages.values()) {
+            java.util.Collections.sort(tracks, (a, b) -> Double.compare(mSubtitles.fit(b), mSubtitles.fit(a)));
+            double best = mSubtitles.fit(tracks.get(0));
+            for (com.shiggsy365.bingetvredux.stremio.Subtitles.Track t : tracks) {
+                if (t == mSubtitles.external()) chosen = rows.size();
+                String language = t.lang.isEmpty() ? "" : new Locale(t.lang).getDisplayLanguage(Locale.UK);
+                String detail = t.addon + (sameKind.get(t.lang + "|" + t.addon) > 1 ? "  ·  " + numbers.get(t) : "");
+                if (best > 0 && t == tracks.get(0)) detail = "Best match  ·  " + detail;
+                rows.add(ChoiceMenu.Row.choice(language.isEmpty() ? "Subtitles" : language, detail));
+                choices.add(t);
+            }
         }
         rows.add(ChoiceMenu.Row.heading("Timing and style"));
         choices.add(null);
@@ -617,7 +639,7 @@ final class Osd {
                                 ((Tracks.Group) track[0]).getMediaTrackGroup(), (Integer) track[1]))
                         .build());
             }
-        }, closed, 470);
+        }, closed, 440);
     }
 
     // ---- Subtitle offset, adjusted with the picture in view
@@ -727,6 +749,47 @@ final class Osd {
                             mSubtitles.restyle();
                             mHandler.post(() -> styleMenu(anchor, closed));
                         }, closed)), closed);
+    }
+
+    /** A button's name, and for the settings what it's set to now. */
+    private CharSequence caption(View button) {
+        CharSequence name = button.getContentDescription();
+        ExoPlayer player = mHost.player();
+        Object tag = button.getTag();
+        if (player == null || tag == null) return name;
+        String value = "";
+        if (AUDIO_TAG.equals(tag)) {
+            value = currentTrack(player, C.TRACK_TYPE_AUDIO);
+        } else if (SUBS_TAG.equals(tag) && mSubtitles != null) {
+            if (mSubtitles.external() != null) {
+                String lang = mSubtitles.external().lang;
+                value = lang.isEmpty() ? mSubtitles.external().addon : new Locale(lang).getDisplayLanguage(Locale.UK);
+                if (!mSubtitles.timingNote().isEmpty()) value += "  ·  " + mSubtitles.timingNote();
+            } else if (player.getTrackSelectionParameters().disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)) {
+                value = "Off";
+            } else {
+                value = currentTrack(player, C.TRACK_TYPE_TEXT);
+                if (value.isEmpty()) value = "Off";
+            }
+        } else if (PICTURE_TAG.equals(tag)) {
+            int mode = mPlayerView.getResizeMode();
+            value = mode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM ? "Zoom"
+                    : mode == AspectRatioFrameLayout.RESIZE_MODE_FILL ? "Stretch" : "Fit";
+        } else if (SPEED_TAG.equals(tag)) {
+            float speed = player.getPlaybackParameters().speed;
+            value = speed == 1f ? "Normal" : String.format(Locale.ROOT, "%.2gx", speed);
+        }
+        return value.isEmpty() ? name : name + "  ·  " + value;
+    }
+
+    private static String currentTrack(ExoPlayer player, int type) {
+        for (Tracks.Group g : player.getCurrentTracks().getGroups()) {
+            if (g.getType() != type) continue;
+            for (int i = 0; i < g.length; i++) {
+                if (g.isTrackSelected(i)) return trackLabel(g.getTrackFormat(i), type);
+            }
+        }
+        return "";
     }
 
     /** "English · DD+ 5.1", "French (forced)". */

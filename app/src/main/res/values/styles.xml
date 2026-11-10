@@ -72,6 +72,11 @@
     </style>
 
     <!-- A stream card's text line ("Quality: BluRay | HEVC"). -->
+    <style name="ChoiceSheet" parent="">
+        <item name="android:windowEnterAnimation">@anim/sheet_in</item>
+        <item name="android:windowExitAnimation">@anim/sheet_out</item>
+    </style>
+
     <style name="StreamCardLine" parent="">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">18dp</item>

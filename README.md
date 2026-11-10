@@ -35,13 +35,13 @@ Stremio addons you add, and the public radio and podcast directories.
    - `BingeTV-Redux-<version>-armeabi-v7a.apk`: Fire TV Sticks and most TVs (the smallest)
    - `BingeTV-Redux-<version>-arm64-v8a.apk`: 64-bit devices
    - `BingeTV-Redux-<version>.apk`: any of them
-3. Open BingeTV Redux and select the **logo** at the left of its menu bar: profiles along the top,
-   settings below. Scan the QR code with your phone, or open the address it shows on any device on
+3. Open BingeTV Redux and select the **logo** at the left of its menu bar, then **Settings** under
+   the profiles. Scan the QR code with your phone, or open the address it shows on any device on
    the same network. The QR code fills in the PIN for you; otherwise type the 4-digit PIN shown on
    the TV.
 
 About once a week the app checks for a new release and offers to install it. **Check for
-updates** (under the logo) checks straight away.
+updates** (in Settings) checks straight away.
 
 ## On the TV
 
@@ -51,11 +51,13 @@ updates** (under the logo) checks straight away.
   Continue Watching (including the next episode of shows you're watching), Next Up, your Watchlist
   and what's on live TV now.
 - **See all:** a row's last card opens the whole catalog as a grid, with a genre filter.
-- **Info pages:** details, seasons and episodes (with what you've watched), the cast (select
-  someone to search for them), similar titles (with MDBList), Play or Resume, choose a stream,
-  mark watched (with undo), the watchlist and the trailer.
-- **Streams:** cards in two columns with badges for quality, HDR, audio and cached, filtered by
-  resolution. Streams appear as each addon answers.
+- **Info pages:** all on one screen, with tabs along the bottom for each season's episodes (with
+  what you've watched), the cast (select someone to search for them) and similar titles (with
+  MDBList). Play or Resume, choose a stream, mark watched (with undo), the watchlist and the
+  trailer.
+- **Streams:** a list with the best stream for your TV first, with badges for quality, HDR and
+  audio, filtered by addon, resolution or cached. The focused one opens up with all its details.
+  Streams appear as each addon answers.
 - **Player:** the OSD has the title, times, progress (Up to seek, Left/Right to skip) and buttons
   for streams, audio, subtitles (tracks from the video or your subtitle addons, an offset to fix
   lip sync, and a style), picture size and speed. If a stream fails, the next one is tried. Near

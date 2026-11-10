@@ -182,6 +182,23 @@ final class SubtitleSync {
         return new ArrayList<>(lines.subList(from, Math.min(lines.size(), from + WINDOW_LINES)));
     }
 
+    /**
+     * How well subtitles fit the video's own lines, from three places in the film: the best
+     * clear match, 0 for none. {@code curves} are reused from one subtitle to the next.
+     */
+    static double fit(List<Span> subtitles, List<Span> video, SubtitleAlign.Curve[] curves) {
+        List<Span> sorted = new ArrayList<>(video);
+        Collections.sort(sorted, (a, b) -> Double.compare(a.startMs, b.startMs));
+        double best = 0;
+        for (int quarter = 1; quarter <= 3; quarter++) {
+            int from = Math.max(0, Math.min(sorted.size() * quarter / 4 - WINDOW_LINES / 2, sorted.size() - WINDOW_LINES));
+            Alignment found = SubtitleAlign.align(sorted.subList(from, Math.min(sorted.size(), from + WINDOW_LINES)),
+                    subtitles, curves);
+            if (found != null && found.confident) best = Math.max(best, found.match);
+        }
+        return best;
+    }
+
     // ---- Which of the video's own subtitles to match against
 
     private static final Pattern COMMENTARY = Pattern.compile("\\bcommentary\\b");

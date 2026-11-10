@@ -9,7 +9,8 @@ import android.util.AttributeSet;
 import android.view.View;
 
 /**
- * The OSD's progress line: buffered (grey) under played (red). Focused (for seeking) it grows
+ * The OSD's progress line: buffered (grey) under played (red), with the parts that can be
+ * skipped marked in gold. Focused (for seeking) it grows
  * thicker and shows a white nub where playback is.
  */
 public class OsdBar extends View {
@@ -20,6 +21,9 @@ public class OsdBar extends View {
     private final RectF mRect = new RectF();
     private float mPlayedFraction;
     private float mBufferedFraction;
+    private final Paint mMark = new Paint(Paint.ANTI_ALIAS_FLAG);
+    // {start, end} pairs, as fractions of the whole: parts that can be skipped.
+    private float[] mMarks = new float[0];
 
     public OsdBar(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -27,6 +31,7 @@ public class OsdBar extends View {
         mBuffered.setColor(0x80FFFFFF);
         mPlayed.setColor(context.getColor(R.color.guide_accent));
         mNub.setColor(0xFFFFFFFF);
+        mMark.setColor(0xFFFFBE01);
         setFocusable(true);
     }
 
@@ -37,6 +42,13 @@ public class OsdBar extends View {
         if (played == mPlayedFraction && buffered == mBufferedFraction) return;
         mPlayedFraction = played;
         mBufferedFraction = buffered;
+        invalidate();
+    }
+
+    /** {start, end} pairs of fractions to mark on the line. */
+    public void setMarks(float[] marks) {
+        if (java.util.Arrays.equals(marks, mMarks)) return;
+        mMarks = marks;
         invalidate();
     }
 
@@ -60,6 +72,10 @@ public class OsdBar extends View {
         canvas.drawRoundRect(mRect, radius, radius, mBuffered);
         mRect.set(left, cy - radius, left + width * mPlayedFraction, cy + radius);
         canvas.drawRoundRect(mRect, radius, radius, mPlayed);
+        for (int i = 0; i + 1 < mMarks.length; i += 2) {
+            mRect.set(left + width * mMarks[i], cy - radius, left + width * mMarks[i + 1], cy + radius);
+            canvas.drawRoundRect(mRect, radius, radius, mMark);
+        }
         if (nub > 0) canvas.drawCircle(left + width * mPlayedFraction, cy, nub, mNub);
     }
 }

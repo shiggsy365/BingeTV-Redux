@@ -33,9 +33,8 @@
         android:paddingEnd="24dp" />
 
     <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Add and rename profiles on the web page (select the logo at the top left of the home screen for its address)."
-        android:textColor="@color/guide_muted"
-        android:textSize="14sp" />
+        android:id="@+id/settings"
+        style="@style/OsdButton"
+        android:layout_marginTop="16dp"
+        android:text="Settings" />
 </LinearLayout>

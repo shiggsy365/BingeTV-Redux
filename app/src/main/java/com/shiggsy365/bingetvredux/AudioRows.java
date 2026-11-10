@@ -58,6 +58,15 @@ final class AudioRows {
         return rows;
     }
 
+    /** "3 days ago", from an episode's line of details; "" when it doesn't say. */
+    static String episodeAge(MetaItem item) {
+        for (String part : item.subtitle.split("  ·  ")) {
+            String lower = part.toLowerCase(Locale.ROOT);
+            if (lower.endsWith(" ago") || lower.equals("today") || lower.equals("yesterday")) return part;
+        }
+        return "";
+    }
+
     static boolean isAudio(MetaItem item) {
         return item.id.startsWith(Radio.PREFIX) || item.id.startsWith(Podcasts.PODCAST_PREFIX)
                 || item.id.startsWith(Podcasts.EPISODE_PREFIX);

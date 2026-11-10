@@ -3,7 +3,7 @@
     android:id="@+id/card"
     android:layout_width="@dimen/poster_width"
     android:layout_height="@dimen/poster_height"
-    android:layout_marginEnd="14dp"
+    android:layout_marginEnd="7dp"
     android:background="@drawable/card_placeholder"
     android:clickable="true"
     android:focusable="true"
@@ -24,6 +24,39 @@
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
         android:importantForAccessibility="no" />
+
+    <!-- A podcast episode's title and age, as one show's episodes share their artwork. -->
+    <LinearLayout
+        android:id="@+id/card_caption"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@drawable/card_caption"
+        android:orientation="vertical"
+        android:paddingStart="7dp"
+        android:paddingTop="22dp"
+        android:paddingEnd="7dp"
+        android:paddingBottom="6dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/card_caption_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="2"
+            android:textColor="#FFFFFFFF"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/card_caption_age"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:singleLine="true"
+            android:textColor="#FFD0D0D0"
+            android:textSize="11sp" />
+    </LinearLayout>
 
     <!-- Paused or watched: a ribbon across the corner (Badges sizes it to the card). -->
     <ImageView

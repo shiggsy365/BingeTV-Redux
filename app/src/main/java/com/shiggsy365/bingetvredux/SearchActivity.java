@@ -38,6 +38,7 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
     private static final int REQUEST_VOICE = 1;
     private static final int RECENT_MAX = 12;
     private static final int SUGGESTIONS_MAX = 8;
+    private static final int DISCOVER_ROWS = 3;
     private static final long SUGGEST_PAUSE_MS = 250;
     private static final String SUGGEST_URL = "https://v3.sg.media-imdb.com/suggestion/x/";
 
@@ -117,7 +118,20 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
         } else {
             mQuery.requestFocus();
             showRecent();
+            showDiscover();
         }
+    }
+
+    /** Something to browse while the box is empty: each hub's first catalog. */
+    private void showDiscover() {
+        AddonStore store = Stremio.addons(this);
+        List<CatalogRows.Row> rows = new ArrayList<>();
+        for (AddonStore.HubInfo hub : store.hubsInUse()) {
+            if (rows.size() == DISCOVER_ROWS) break;
+            AddonStore.Entry first = store.hubCatalogs(hub.id).get(0);
+            rows.add(new CatalogRows.Row(HomeActivity.homeTitle(first), first));
+        }
+        mRows.setRows(rows);
     }
 
     // ---- Recent searches and suggestions
@@ -303,6 +317,13 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
 
     private void search() {
         String query = mQuery.getText().toString().trim();
+        if (query.isEmpty() && !mPerson && !mSearched.isEmpty()) {
+            mSearched = "";
+            mGeneration++;
+            mStatus.setText("");
+            showDiscover();
+            return;
+        }
         if (query.length() < MIN_LENGTH || query.equalsIgnoreCase(mSearched)) return;
         mSearched = query;
         int generation = ++mGeneration;

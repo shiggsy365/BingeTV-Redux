@@ -47,6 +47,11 @@ final class StreamPrefetch {
                         id, null, languages)));
     }
 
+    /** The prefetch for this title, left for {@link #take}; null if there's none. */
+    static synchronized Found peek(String type, String id) {
+        return sFound != null && sFound.key.equals(type + "/" + id) ? sFound : null;
+    }
+
     /** The prefetch for this title, taken (so it's used once); null if there's none. */
     static synchronized Found take(String type, String id) {
         Found found = sFound;

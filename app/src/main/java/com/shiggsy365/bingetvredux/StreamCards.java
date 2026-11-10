@@ -29,8 +29,9 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * The stream list's cards, as BingeTV's: a title line (debrid tag, addon, resolution), quality,
- * audio and source lines, and a strip of badges (drawn here: coloured labels, no logos).
+ * The stream list's rows: a strip of badges (drawn here: coloured labels, no logos) with the
+ * debrid service, bitrate and size beside it. The focused one opens up with a title line (debrid
+ * tag, addon, resolution) and its quality, audio and source lines.
  */
 final class StreamCards {
     private static final int KEY = 0xFF8A949E;        // "Quality:" etc.
@@ -50,18 +51,32 @@ final class StreamCards {
 
     // ---- Text
 
-    static CharSequence title(Stream stream, StreamInfo info) {
-        SpannableStringBuilder out = new SpannableStringBuilder();
-        String code = "";
+    /** Debrid service, bitrate and size, for the row's right-hand side. */
+    private static String detail(StreamInfo info) {
+        return join("  ·  ", debridCode(info), info.p2p ? "P2P" : "", info.bitrate, info.size);
+    }
+
+    private static String debridCode(StreamInfo info) {
         for (Map.Entry<String, String> d : StreamInfo.DEBRID.entrySet()) {
-            if (d.getValue().equals(info.debrid)) {
-                code = d.getKey();
-                break;
-            }
+            if (d.getValue().equals(info.debrid)) return d.getKey();
         }
-        if (code.isEmpty() && !info.debrid.isEmpty()) {
-            code = info.debrid.substring(0, Math.min(2, info.debrid.length())).toUpperCase(Locale.ROOT);
-        }
+        return info.debrid.substring(0, Math.min(2, info.debrid.length())).toUpperCase(Locale.ROOT);
+    }
+
+    /** What the Play button says it will play: "1080p · DD+". */
+    static String summary(StreamInfo info) {
+        return join(" · ", StreamInfo.LABELS.containsKey(info.resolution) ? StreamInfo.LABELS.get(info.resolution) : "",
+                info.audio.isEmpty() ? "" : label(info.audio.get(0)));
+    }
+
+    /** A stream's file, for the line under the list. */
+    static String source(StreamInfo info) {
+        return info.filename.isEmpty() ? info.details.replace('\n', ' ') : info.filename;
+    }
+
+    private static CharSequence title(Stream stream, StreamInfo info) {
+        SpannableStringBuilder out = new SpannableStringBuilder();
+        String code = debridCode(info);
         if (!code.isEmpty()) {
             append(out, "[" + code + (info.cached ? "+" : "") + "] ", info.cached ? CACHED : UNCACHED, false);
         } else if (info.p2p) {
@@ -74,7 +89,7 @@ final class StreamCards {
     }
 
     /** Up to three lines: Quality, Audio, then Size · Source · Lang (or the addon's own words). */
-    static List<CharSequence> lines(Stream stream, StreamInfo info) {
+    private static List<CharSequence> lines(Stream stream, StreamInfo info) {
         List<String> quality = new ArrayList<>();
         quality.add(label(info.release));
         quality.add(stream.quality.codec);
@@ -146,6 +161,22 @@ final class StreamCards {
         if (bold) out.setSpan(new StyleSpan(Typeface.BOLD), start, out.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
     }
 
+    /** Opens or closes a card's details; they're worked out only when it opens. */
+    private static void showDetails(View card, Stream stream, StreamInfo info, boolean open) {
+        View details = card.findViewById(R.id.card_details);
+        if (open) {
+            ((TextView) card.findViewById(R.id.card_title)).setText(title(stream, info));
+            List<CharSequence> lines = lines(stream, info);
+            int[] ids = {R.id.card_line1, R.id.card_line2, R.id.card_line3};
+            for (int i = 0; i < ids.length; i++) {
+                TextView line = card.findViewById(ids[i]);
+                line.setText(i < lines.size() ? lines.get(i) : "");
+                line.setVisibility(i < lines.size() ? View.VISIBLE : View.GONE);
+            }
+        }
+        details.setVisibility(open ? View.VISIBLE : View.GONE);
+    }
+
     // ---- Badges
 
     /** {label, fill, text colour, border (0: none)} for a badge key. */
@@ -196,10 +227,16 @@ final class StreamCards {
 
     /** Fills a row with the stream's badges. */
     static void badges(LinearLayout into, StreamInfo info) {
+        badges(into, info, false);
+    }
+
+    /** {@code hideCached}: when every stream listed is cached, the badge says nothing. */
+    private static void badges(LinearLayout into, StreamInfo info, boolean hideCached) {
         into.removeAllViews();
         Context context = into.getContext();
         float dp = context.getResources().getDisplayMetrics().density;
         for (String key : info.badges()) {
+            if (hideCached && key.equals("dl_cached")) continue;
             Object[] s = STYLES.get(key);
             if (s == null) continue;
             TextView badge = new TextView(context);
@@ -232,6 +269,8 @@ final class StreamCards {
         private final int mPlaying;
         private final OnPick mOnPick;
         private final OnFocus mOnFocus;
+        private boolean mAllCached;
+        private String mBest;
 
         Adapter(List<Stream> streams, List<StreamInfo> infos, int playing, OnPick onPick, OnFocus onFocus) {
             mStreams = streams;
@@ -244,14 +283,26 @@ final class StreamCards {
         void show(List<Integer> shown) {
             mShown.clear();
             mShown.addAll(shown);
+            mAllCached = !shown.isEmpty();
+            for (int i : shown) mAllCached &= mInfos.get(i).cached;
             notifyDataSetChanged();
+        }
+
+        /** The first stream is recommended: it's shown larger, under {@code label} (null: it isn't). */
+        void setBest(String label) {
+            mBest = label;
+        }
+
+        @Override
+        public int getItemViewType(int position) {
+            return mBest != null && position == 0 && mShown.get(0) == 0 ? 1 : 0;
         }
 
         @NonNull
         @Override
         public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             return new RecyclerView.ViewHolder(LayoutInflater.from(parent.getContext())
-                    .inflate(R.layout.stream_card, parent, false)) {};
+                    .inflate(viewType == 1 ? R.layout.stream_card_best : R.layout.stream_card, parent, false)) {};
         }
 
         @Override
@@ -260,23 +311,16 @@ final class StreamCards {
             Stream stream = mStreams.get(index);
             StreamInfo info = mInfos.get(index);
             View view = holder.itemView;
-            CharSequence title = title(stream, info);
-            if (index == mPlaying) {
-                SpannableStringBuilder playing = new SpannableStringBuilder();
-                append(playing, "▶ Playing  ", CACHED, true);
-                title = playing.append(title);
-            }
-            ((TextView) view.findViewById(R.id.card_title)).setText(title);
-            List<CharSequence> lines = lines(stream, info);
-            int[] ids = {R.id.card_line1, R.id.card_line2, R.id.card_line3};
-            for (int i = 0; i < ids.length; i++) {
-                TextView line = view.findViewById(ids[i]);
-                line.setText(i < lines.size() ? lines.get(i) : "");
-                line.setVisibility(i < lines.size() ? View.VISIBLE : View.INVISIBLE);
-            }
-            badges(view.findViewById(R.id.card_badges), info);
+            LinearLayout badges = view.findViewById(R.id.card_badges);
+            badges(badges, info, mAllCached);
+            if (badges.getChildCount() == 0) showWords(badges, stream);
+            ((TextView) view.findViewById(R.id.card_detail)).setText(
+                    (index == mPlaying ? "▶ Playing   " : "") + detail(info));
+            if (getItemViewType(position) == 1) ((TextView) view.findViewById(R.id.card_label)).setText(mBest);
             view.setOnClickListener(v -> mOnPick.pick(index));
+            showDetails(view, stream, info, view.isFocused());
             view.setOnFocusChangeListener((v, focused) -> {
+                showDetails(view, stream, info, focused);
                 if (focused) mOnFocus.focused(info);
             });
         }
@@ -284,6 +328,16 @@ final class StreamCards {
         @Override
         public int getItemCount() {
             return mShown.size();
+        }
+
+        /** Nothing to badge (e.g. YouTube): the addon's own words. */
+        private void showWords(LinearLayout into, Stream stream) {
+            TextView words = new TextView(into.getContext());
+            words.setText(StreamInfo.normalise(stream.title).replace('\n', ' '));
+            words.setTextColor(0xFFE6E6E6);
+            words.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            words.setSingleLine(true);
+            into.addView(words);
         }
     }
 }

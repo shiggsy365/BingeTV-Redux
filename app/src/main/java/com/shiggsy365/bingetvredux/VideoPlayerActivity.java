@@ -25,6 +25,7 @@ import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import androidx.media3.ui.PlayerView;
 
 import com.shiggsy365.bingetvredux.stremio.Stream;
@@ -160,7 +161,9 @@ public class VideoPlayerActivity extends Activity {
             mTasks.execute(() -> {
                 List<SkipTimes.Segment> found = SkipTimes.find(mPlayback.meta, mPlayback.video);
                 runOnUiThread(() -> {
-                    if (!isDestroyed()) mSegments = found;
+                    if (isDestroyed()) return;
+                    mSegments = found;
+                    mOsd.setMarks(found);
                 });
             });
         }
@@ -389,6 +392,10 @@ public class VideoPlayerActivity extends Activity {
     }
 
     private void release() {
+        // What this playback measured decides which stream suits the connection next time.
+        if (mPlayer != null && mStarted) {
+            StreamPick.saveConnection(this, DefaultBandwidthMeter.getSingletonInstance(this).getBitrateEstimate());
+        }
         mHandler.removeCallbacks(mStartTimeout);
         if (mPlayer != null) {
             mPlayerView.setPlayer(null);
@@ -569,9 +576,8 @@ public class VideoPlayerActivity extends Activity {
         for (int i = 0; i < mPlayback.streams.size(); i++) all.add(i);
         cards.show(all);
         float dp = getResources().getDisplayMetrics().density;
-        list.setNumColumns(2);
-        list.setHorizontalSpacing(Math.round(8 * dp));
-        list.setVerticalSpacing(Math.round(10 * dp));
+        list.setNumColumns(1);
+        list.setVerticalSpacing(Math.round(6 * dp));
         list.setAdapter(cards);
         list.setSelectedPosition(mIndex);
         mOsd.hide();

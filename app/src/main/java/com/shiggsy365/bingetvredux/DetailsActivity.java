@@ -14,7 +14,6 @@ import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -23,6 +22,8 @@ import androidx.leanback.widget.BaseGridView;
 import androidx.leanback.widget.HorizontalGridView;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.shiggsy365.bingetvredux.stremio.Stream;
+import com.shiggsy365.bingetvredux.stremio.StreamInfo;
 import com.shiggsy365.bingetvredux.stremio.MetaItem;
 import com.shiggsy365.bingetvredux.stremio.Metas;
 import com.shiggsy365.bingetvredux.stremio.Parallel;
@@ -56,9 +57,10 @@ public class DetailsActivity extends Activity {
     private static final String EXTRA_DESCRIPTION = "description";
     private static final int MAX_CAST = 20;
     private static final int MAX_SIMILAR = 20;
+    // Tabs that aren't a season; seasons are numbered from 0.
+    private static final int TAB_NONE = Integer.MIN_VALUE, TAB_CAST = -100, TAB_SIMILAR = -101;
     private static final long SIMILAR_TIMEOUT_MS = 10_000;
 
-    private ScrollView mPage;
     private ImageView mBackdrop;
     private ImageView mLogo;
     private TextView mTitle;
@@ -68,6 +70,14 @@ public class DetailsActivity extends Activity {
     private TextView mDescription;
     private TextView mStatus;
     private TextView mPlay;
+    // Long enough on the page to be looking at it: passing through doesn't ask the addons.
+    private static final long PEEK_AFTER_MS = 1200;
+    private final Background.Tasks mPeekTasks = new Background.Tasks(1);
+    private Runnable mPeek;
+    private String mPeekKey;
+    private String mPlayBase = "Play";
+    // What Play will play ("1080p · DD+"), once it's known.
+    private String mPlayDetail = "";
     private ImageView mStreams;
     private ImageView mStartOver;
     private ImageView mWatched;
@@ -75,13 +85,12 @@ public class DetailsActivity extends Activity {
     private ImageView mRemove;
     private ImageView mTrailer;
     private TextView mHint;
-    private View mSeasonsSection;
-    private TextView mSeasonsHeading;
+    // The tabs: each season's number, then TAB_CAST and TAB_SIMILAR.
     private HorizontalGridView mSeasons;
+    private final List<Integer> mTabs = new ArrayList<>();
+    private int mTab = TAB_NONE;
     private HorizontalGridView mEpisodes;
-    private View mCastSection;
     private HorizontalGridView mCast;
-    private View mSimilarSection;
     private HorizontalGridView mSimilar;
 
     // One thread for the page's details; the watchlist and similar titles load alongside.
@@ -124,7 +133,6 @@ public class DetailsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.details_activity);
-        mPage = findViewById(R.id.page);
         mBackdrop = findViewById(R.id.backdrop);
         mLogo = findViewById(R.id.logo);
         mTitle = findViewById(R.id.title);
@@ -141,13 +149,9 @@ public class DetailsActivity extends Activity {
         mRemove = findViewById(R.id.remove);
         mTrailer = findViewById(R.id.trailer);
         mHint = findViewById(R.id.hint);
-        mSeasonsSection = findViewById(R.id.seasons_section);
-        mSeasonsHeading = findViewById(R.id.seasons_heading);
         mSeasons = findViewById(R.id.seasons);
         mEpisodes = findViewById(R.id.episodes);
-        mCastSection = findViewById(R.id.cast_section);
         mCast = findViewById(R.id.cast);
-        mSimilarSection = findViewById(R.id.similar_section);
         mSimilar = findViewById(R.id.similar);
 
         Intent in = getIntent();
@@ -169,13 +173,9 @@ public class DetailsActivity extends Activity {
         mWatchlist.setOnClickListener(v -> toggleWatchlist());
         mRemove.setOnClickListener(v -> removeFromHome());
         mTrailer.setOnClickListener(v -> TrailerActivity.start(this, mItem.trailer, mItem.name));
-        // The buttons bring the page back to its top; the round ones say what they do.
-        mPlay.setOnFocusChangeListener((v, focused) -> {
-            if (focused) mPage.smoothScrollTo(0, 0);
-        });
+        // The round buttons say what they do.
         for (View button : new View[]{mStreams, mStartOver, mWatched, mRemove, mWatchlist, mTrailer}) {
             button.setOnFocusChangeListener((v, focused) -> {
-                if (focused) mPage.smoothScrollTo(0, 0);
                 mHint.setText(focused ? hint(v) : "");
                 if (v == mWatched && mItem != null) updateWatched();
             });
@@ -217,6 +217,8 @@ public class DetailsActivity extends Activity {
     @Override
     protected void onDestroy() {
         mExecutor.shutdownNow();
+        mPeekTasks.shutdownNow();
+        if (mPeek != null) mPlay.removeCallbacks(mPeek);
         super.onDestroy();
     }
 
@@ -285,17 +287,14 @@ public class DetailsActivity extends Activity {
         runOnUiThread(() -> {
             if (isDestroyed()) return;
             mSimilarItems = shown;
-            mSimilarSection.setVisibility(View.VISIBLE);
             notifyChanged(mSimilar);
+            showTabs();
         });
     }
 
     private void showTitle(String name, String logo) {
         mTitle.setText(name);
-        boolean hasLogo = logo != null && !logo.isEmpty();
-        mTitle.setVisibility(hasLogo ? View.GONE : View.VISIBLE);
-        mLogo.setVisibility(hasLogo ? View.VISIBLE : View.GONE);
-        Images.fade(mLogo, logo);
+        Images.logo(mLogo, mTitle, logo);
     }
 
     private void show(MetaItem meta) {
@@ -310,25 +309,15 @@ public class DetailsActivity extends Activity {
 
         mPeople = meta.people(MetaItem.CAST);
         if (mPeople.size() > MAX_CAST) mPeople = new ArrayList<>(mPeople.subList(0, MAX_CAST));
-        mCastSection.setVisibility(mPeople.isEmpty() ? View.GONE : View.VISIBLE);
         notifyChanged(mCast);
 
         mSeasonNumbers = meta.seasons();
         boolean seasons = meta.hasSeasons() && !mSeasonNumbers.isEmpty();
         if (seasons) {
             ShowProgress.remember(meta);
-            mSeasonsSection.setVisibility(View.VISIBLE);
-            // A show with one season has no tabs: its episodes sit under "Episodes".
-            boolean one = mSeasonNumbers.size() == 1;
-            mSeasons.setVisibility(one ? View.GONE : View.VISIBLE);
-            // Down from the buttons goes to the season tabs, not past them. Only when they're
-            // shown: hidden (a film's page) they'd still be picked, and the focus would stay put.
-            for (View button : new View[]{mPlay, mStreams, mStartOver, mWatched, mRemove, mWatchlist, mTrailer}) {
-                button.setNextFocusDownId(one ? View.NO_ID : R.id.seasons);
-            }
-            mSeasonsHeading.setText(one ? "Episodes" : "Seasons");
-            mSeasons.setAdapter(new SeasonAdapter());
         }
+        mSeasons.setAdapter(new SeasonAdapter());
+        showTabs();
         updatePlay();
         if (seasons) {
             showSeason(mPlayVideo != null && mSeasonNumbers.contains(mPlayVideo.season)
@@ -375,7 +364,44 @@ public class DetailsActivity extends Activity {
 
     // ---- Play ----
 
+    /** Says what Play will play, once its streams are known, without waiting to be pressed. */
+    private void peekStreams() {
+        if (!"auto".equals(Settings.string(this, Settings.PLAY_BUTTON))) return;
+        Video video = mItem.hasSeasons() ? mPlayVideo : null;
+        if (mItem.hasSeasons() && video == null) return;
+        Playback playback = new Playback(mItem, video, 0, video == null ? "" : WatchStore.get(this).bingeGroup(mItem.id, 7 * 24 * 3600_000L));
+        String key = mItem.type + "/" + playback.videoId();
+        if (key.equals(mPeekKey)) return;
+        mPeekKey = key;
+        mPlayDetail = "";
+        mPlay.removeCallbacks(mPeek);
+        mPeek = () -> {
+            StreamPrefetch.start(this, mItem.type, playback.videoId());
+            StreamPrefetch.Found found = StreamPrefetch.peek(mItem.type, playback.videoId());
+            if (found == null) return;
+            Context app = getApplicationContext();
+            mPeekTasks.execute(() -> {
+                try {
+                    List<Stream> streams = StreamsActivity.arranged(app, found.streams.get(),
+                            Settings.streamPrefs(app, video != null), playback.bingeGroup);
+                    if (streams.isEmpty()) return;
+                    String summary = StreamCards.summary(StreamInfo.of(streams.get(0)));
+                    runOnUiThread(() -> {
+                        if (isDestroyed() || !key.equals(mPeekKey)) return;
+                        mPlayDetail = summary;
+                        setPlayLabel(mPlayBase);
+                    });
+                } catch (Exception e) {
+                    // The button just says Play, then.
+                }
+            });
+        };
+        mPlay.postDelayed(mPeek, PEEK_AFTER_MS);
+    }
+
     private void setPlayLabel(String text) {
+        mPlayBase = text;
+        if (!mPlayDetail.isEmpty()) text += "  ·  " + mPlayDetail;
         Drawable icon = getDrawable(R.drawable.ic_play);
         SpannableString label = new SpannableString("  " + text);
         if (icon != null) {
@@ -401,6 +427,7 @@ public class DetailsActivity extends Activity {
             setPlayLabel(mPlayFrom > 0 ? "Resume from " + clock(mPlayFrom) : "Play");
             mStartOver.setVisibility(mPlayFrom > 0 ? View.VISIBLE : View.GONE);
             updateRemove();
+            peekStreams();
             return;
         }
         WatchStore.Row resume = store.resumeFor(mItem.id);
@@ -424,6 +451,7 @@ public class DetailsActivity extends Activity {
         }
         mStartOver.setVisibility(mPlayFrom > 0 ? View.VISIBLE : View.GONE);
         updateRemove();
+        peekStreams();
     }
 
     // ---- Continue Watching and Next Up ----
@@ -667,15 +695,50 @@ public class DetailsActivity extends Activity {
         updateWatched();
     }
 
+    /** The tabs there are now (similar titles arrive last); the first is shown if none is yet. */
+    private void showTabs() {
+        mTabs.clear();
+        mTabs.addAll(mSeasonNumbers);
+        if (!mPeople.isEmpty()) mTabs.add(TAB_CAST);
+        if (!mSimilarItems.isEmpty()) mTabs.add(TAB_SIMILAR);
+        notifyChanged(mSeasons);
+        mSeasons.setVisibility(mTabs.isEmpty() ? View.GONE : View.VISIBLE);
+        // Down from the buttons goes to the tabs. Only when they're shown: hidden they'd still
+        // be picked, and the focus would stay put.
+        for (View button : new View[]{mPlay, mStreams, mStartOver, mWatched, mRemove, mWatchlist, mTrailer}) {
+            button.setNextFocusDownId(mTabs.isEmpty() ? View.NO_ID : R.id.seasons);
+        }
+        if (!mTabs.contains(mTab) && !mTabs.isEmpty() && mSeasonNumbers.isEmpty()) showTab(mTabs.get(0));
+    }
+
+    /** Puts a tab's content on the shelf. */
+    private void showTab(int tab) {
+        boolean season = tab != TAB_CAST && tab != TAB_SIMILAR;
+        mEpisodes.setVisibility(season ? View.VISIBLE : View.GONE);
+        mCast.setVisibility(tab == TAB_CAST ? View.VISIBLE : View.GONE);
+        mSimilar.setVisibility(tab == TAB_SIMILAR ? View.VISIBLE : View.GONE);
+        mTab = tab;
+        if (season && tab != mSeason) showSeason(tab);
+        else restyleTabs();
+    }
+
+    private View shelf() {
+        return mTab == TAB_CAST ? mCast : mTab == TAB_SIMILAR ? mSimilar : mEpisodes;
+    }
+
     private void showSeason(int season) {
         mSeason = season;
+        mTab = season;
+        mEpisodes.setVisibility(View.VISIBLE);
+        mCast.setVisibility(View.GONE);
+        mSimilar.setVisibility(View.GONE);
         mSeasonEpisodes = mItem.episodes(season);
         mEpisodes.setAdapter(new EpisodeAdapter());
         if (mPlayVideo != null && mPlayVideo.season == season) {
             mEpisodes.setSelectedPosition(Math.max(0, mSeasonEpisodes.indexOf(mPlayVideo)));
         }
         // Down from the buttons lands on this season's tab, not the first one.
-        if (!mSeasons.hasFocus()) mSeasons.setSelectedPosition(Math.max(0, mSeasonNumbers.indexOf(season)));
+        if (!mSeasons.hasFocus()) mSeasons.setSelectedPosition(Math.max(0, mTabs.indexOf(season)));
         restyleTabs();
         updateWatched();
     }
@@ -691,13 +754,20 @@ public class DetailsActivity extends Activity {
         }
     }
 
-    /** The season shown is bold and white; watched seasons are dimmer than the rest. */
+    /** The tab shown is bold and white; watched seasons are dimmer than the rest. */
     private void styleTab(TextView tab, int season) {
-        boolean current = season == mSeason;
+        boolean current = season == mTab;
         tab.setSelected(current);
         tab.setTypeface(null, current ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         tab.setTextColor(current || tab.isFocused() ? 0xFFFFFFFF
-                : seasonWatched(season) ? 0xFF6E6E6E : 0xFFA0A0A0);
+                : season != TAB_CAST && season != TAB_SIMILAR && seasonWatched(season) ? 0xFF6E6E6E : 0xFFA0A0A0);
+    }
+
+    private String tabName(int tab) {
+        if (tab == TAB_CAST) return "Cast";
+        if (tab == TAB_SIMILAR) return "Similar";
+        if (mSeasonNumbers.size() == 1) return "Episodes";
+        return seasonName(tab);
     }
 
     private static String seasonName(int season) {
@@ -714,24 +784,24 @@ public class DetailsActivity extends Activity {
 
         @Override
         public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
-            int season = mSeasonNumbers.get(position);
+            int season = mTabs.get(position);
             TextView tab = (TextView) holder.itemView;
-            tab.setText(seasonName(season));
+            tab.setText(tabName(season));
             tab.setTag(season);
             styleTab(tab, season);
-            // Moving along the seasons shows each one's episodes.
+            // Moving along the tabs shows each one's content.
             tab.setOnFocusChangeListener((v, focused) -> {
-                if (focused && season != mSeason) showSeason(season);
+                if (focused && season != mTab) showTab(season);
                 else styleTab(tab, season);
             });
-            tab.setOnClickListener(v -> mEpisodes.requestFocus());
+            tab.setOnClickListener(v -> shelf().requestFocus());
             // Up always lands on Play, not whichever button happens to be above the tab.
             tab.setNextFocusUpId(R.id.play);
         }
 
         @Override
         public int getItemCount() {
-            return mSeasonNumbers.size();
+            return mTabs.size();
         }
     }
 
@@ -787,7 +857,7 @@ public class DetailsActivity extends Activity {
                     });
                 }
             });
-            // Up goes to the season tabs (when there are any), then the buttons.
+            // Up goes to the tabs, then the buttons.
             card.setNextFocusUpId(R.id.seasons);
         }
 
@@ -820,6 +890,7 @@ public class DetailsActivity extends Activity {
             Images.load(view.findViewById(R.id.cast_photo), person.photo);
             view.setOnClickListener(v -> startActivity(
                     SearchActivity.personIntent(DetailsActivity.this, person.name)));
+            view.setNextFocusUpId(R.id.seasons);
         }
 
         @Override
@@ -856,6 +927,7 @@ public class DetailsActivity extends Activity {
             Images.load(view.findViewById(R.id.card_image), item.poster);
             Badges.bind(card, item);
             card.setOnClickListener(v -> startActivity(DetailsActivity.intent(DetailsActivity.this, item)));
+            card.setNextFocusUpId(R.id.seasons);
             card.setOnFocusChangeListener((v, focused) -> {
                 CardFocus.apply(v, focused, CardFocus.SMALL);
             });

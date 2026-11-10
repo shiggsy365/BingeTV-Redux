@@ -205,12 +205,6 @@ public class GuideActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         int key = event.getKeyCode();
-        if (key == KeyEvent.KEYCODE_MENU) {
-            if (event.getAction() == KeyEvent.ACTION_UP) {
-                startActivity(new Intent(this, MainActivity.class));
-            }
-            return true;
-        }
         if (!mGridMode || mChannels.isEmpty()) return super.dispatchKeyEvent(event);
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
         switch (key) {
@@ -354,10 +348,6 @@ public class GuideActivity extends Activity {
             mChips.addView(chip);
             if (group == selected) mSelectedChip = chip;
         }
-        TextView settings = newChip("Settings");
-        settings.setOnClickListener(v -> startActivity(new Intent(this, MainActivity.class)));
-        mChips.addView(settings);
-
         boolean empty = selected == null || selected.channels.isEmpty();
         mGridArea.setVisibility(empty ? View.INVISIBLE : View.VISIBLE);
         mEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
@@ -365,9 +355,8 @@ public class GuideActivity extends Activity {
             mChannels = Collections.emptyList();
             mGridMode = false;
             String url = WebServerService.pageUrl();
-            mEmpty.setText("No channels yet.\nOpen Settings, or manage channels at "
+            mEmpty.setText("No channels yet.\nManage channels at "
                     + (url != null ? url : "the web manager") + ".");
-            settings.requestFocus();
             render();
             return;
         }
@@ -470,6 +459,12 @@ public class GuideActivity extends Activity {
             mRuler.addView(label, lp);
         }
         if (now >= mWindowStart && now < mWindowStart + WINDOW_MS && !mChannels.isEmpty()) {
+            // In the ruler only: over the grid it would run through the programmes' names.
+            ViewGroup.LayoutParams line = mNowLine.getLayoutParams();
+            if (line.height != mRuler.getHeight()) {
+                line.height = mRuler.getHeight();
+                mNowLine.setLayoutParams(line);
+            }
             mNowLine.setVisibility(View.VISIBLE);
             mNowLine.setTranslationX(getResources().getDimensionPixelSize(
                     R.dimen.guide_channel_column) + dp(COLUMN_GAP_DP) + (now - mWindowStart) * mPxPerMs);

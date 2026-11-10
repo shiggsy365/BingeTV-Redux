@@ -45,6 +45,9 @@ import java.util.zip.GZIPInputStream;
 final class SubtitleDriver implements Player.Listener {
     private static final String TAG = "Subtitles";
     private static final long TICK_MS = 100;
+    // Measured once playback has settled, as it downloads every subtitle.
+    private static final long FITS_AFTER_MS = 20_000;
+    private static final int MAX_FITS = 12;
     // How often lines from the file's index are looked at again around the playhead.
     private static final long FOLLOW_MS = 60_000;
     private static final int HOW_NONE = 0;
@@ -55,6 +58,11 @@ final class SubtitleDriver implements Player.Listener {
     private final SubtitleView mView;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final Background.Tasks mExecutor = new Background.Tasks(1);
+    private final Background.Tasks mFitTasks = new Background.Tasks(1);
+    // The addons' subtitles, and how well each fits this stream (0 or missing: not known).
+    private List<Subtitles.Track> mAddonTracks = new ArrayList<>();
+    private Map<Subtitles.Track, Double> mFits = new java.util.HashMap<>();
+    private final Runnable mMeasureFits = this::measureFits;
     private ExoPlayer mPlayer;
     private long mOffsetMs;
     // The addon subtitles being drawn (null: the video's own, or none), and their cues.
@@ -108,6 +116,9 @@ final class SubtitleDriver implements Player.Listener {
         player.addListener(this);
         // Another stream, another timing: the sync starts over when its subtitles are chosen.
         endSync();
+        mFits = new java.util.HashMap<>();
+        mHandler.removeCallbacks(mMeasureFits);
+        if (mStream != null) mHandler.postDelayed(mMeasureFits, FITS_AFTER_MS);
     }
 
     /** The stream about to play (not for live TV), before {@link #attach}. */
@@ -120,6 +131,7 @@ final class SubtitleDriver implements Player.Listener {
         if (mPlayer != null) mPlayer.removeListener(this);
         mHandler.removeCallbacksAndMessages(null);
         mExecutor.shutdownNow();
+        mFitTasks.shutdownNow();
     }
 
     Subtitles.Track external() {
@@ -128,6 +140,16 @@ final class SubtitleDriver implements Player.Listener {
 
     long offsetMs() {
         return mOffsetMs;
+    }
+
+    void setAddonTracks(List<Subtitles.Track> tracks) {
+        mAddonTracks = tracks;
+    }
+
+    /** How well an addon's subtitles fit this stream, higher better; 0 when it isn't known. */
+    double fit(Subtitles.Track track) {
+        Double fit = mFits.get(track);
+        return fit == null ? 0 : fit;
     }
 
     /** How the offset came about, for the menu: "" when there's nothing to say. */
@@ -217,16 +239,15 @@ final class SubtitleDriver implements Player.Listener {
         mExecutor.execute(() -> {
             List<CuesWithTiming> cues = new ArrayList<>();
             try {
-                byte[] data = download(track.url);
-                parser(track.url, data).parse(data, 0, data.length, SubtitleParser.OutputOptions.allCues(), cues::add);
-                java.util.Collections.sort(cues, (a, b) -> Long.compare(a.startTimeUs, b.startTimeUs));
+                cues = parse(track);
             } catch (Exception e) {
                 Log.w(TAG, "Couldn't load " + track.addon + " subtitles: " + e.getMessage());
             }
             List<SubtitleAlign.Span> lines = spans(cues);
+            List<CuesWithTiming> parsed = cues;
             mHandler.post(() -> {
                 if (generation != mGeneration) return;
-                mCues = cues;
+                mCues = parsed;
                 mHandler.removeCallbacks(mTick);
                 mHandler.post(mTick);
                 mLines = lines;
@@ -295,6 +316,49 @@ final class SubtitleDriver implements Player.Listener {
         mLineStartMs = C.TIME_UNSET;
     }
 
+    /** Scores the addons' subtitles in the profile's languages against the file's index, if it has one. */
+    private void measureFits() {
+        if (mStream == null || mStream.url == null || mPlayer == null || mAddonTracks.isEmpty()) return;
+        Stream stream = mStream;
+        Map<Long, List<SubtitleAlign.Span>> known = mIndex;
+        mFitTasks.execute(() -> {
+            Map<Long, List<SubtitleAlign.Span>> index = known != null ? known : SubtitleIndex.read(stream.url, stream.headers);
+            mHandler.post(() -> {
+                if (stream != mStream) return;
+                mIndex = index;
+                List<SubtitleAlign.Span> video = indexedReference(null);
+                if (video != null) scoreTracks(stream, video);
+            });
+        });
+    }
+
+    private void scoreTracks(Stream stream, List<SubtitleAlign.Span> video) {
+        List<String> languages = Settings.subtitleLanguages(mView.getContext());
+        List<Subtitles.Track> tracks = new ArrayList<>();
+        for (Subtitles.Track t : mAddonTracks) {
+            for (String language : languages) {
+                if (VideoPlayerActivity.sameLanguage(t.lang, language) && tracks.size() < MAX_FITS) {
+                    tracks.add(t);
+                    break;
+                }
+            }
+        }
+        mFitTasks.execute(() -> {
+            SubtitleAlign.Curve[] curves = SubtitleAlign.curves(SubtitleSync.LIMIT_MS);
+            Map<Subtitles.Track, Double> fits = new java.util.HashMap<>();
+            for (Subtitles.Track t : tracks) {
+                try {
+                    fits.put(t, SubtitleSync.fit(spans(parse(t)), video, curves));
+                } catch (Exception e) {
+                    Log.i(TAG, "Couldn't measure " + t.addon + " subtitles: " + e.getMessage());
+                }
+            }
+            mHandler.post(() -> {
+                if (stream == mStream) mFits = fits;
+            });
+        });
+    }
+
     /** Reads the file's index, once per stream, then starts matching. */
     private void beginMatching() {
         endSync();
@@ -323,27 +387,20 @@ final class SubtitleDriver implements Player.Listener {
         if (mPlayer == null || mExternal == null) return;
         TrackSelectionOverride live = null;
         int liveRank = Integer.MAX_VALUE;
-        List<SubtitleAlign.Span> indexed = null;
-        int indexedRank = Integer.MAX_VALUE;
         for (Tracks.Group g : mPlayer.getCurrentTracks().getGroups()) {
             if (g.getType() != C.TRACK_TYPE_TEXT) continue;
             for (int i = 0; i < g.length; i++) {
                 if (!g.isTrackSupported(i)) continue;
                 Format f = g.getTrackFormat(i);
-                boolean same = VideoPlayerActivity.sameLanguage(mExternal.lang, f.language);
-                int rank = SubtitleSync.rank(f.sampleMimeType, f.codecs, f.selectionFlags, f.roleFlags, f.label, same, false);
+                int rank = SubtitleSync.rank(f.sampleMimeType, f.codecs, f.selectionFlags, f.roleFlags, f.label,
+                        VideoPlayerActivity.sameLanguage(mExternal.lang, f.language), false);
                 if (rank >= 0 && rank < liveRank) {
                     liveRank = rank;
                     live = new TrackSelectionOverride(g.getMediaTrackGroup(), i);
                 }
-                rank = SubtitleSync.rank(f.sampleMimeType, f.codecs, f.selectionFlags, f.roleFlags, f.label, same, true);
-                List<SubtitleAlign.Span> lines = indexLines(f.id);
-                if (rank >= 0 && rank < indexedRank && lines != null && lines.size() >= SubtitleSync.MIN_INDEX_LINES) {
-                    indexedRank = rank;
-                    indexed = lines;
-                }
             }
         }
+        List<SubtitleAlign.Span> indexed = indexedReference(mExternal.lang);
         if (indexed != null) {
             Log.i(TAG, "Matching against the file's index: " + indexed.size() + " lines");
             SubtitleSync sync = new SubtitleSync(mLines, mRatio);
@@ -362,6 +419,27 @@ final class SubtitleDriver implements Player.Listener {
         } else {
             Log.i(TAG, "Nothing in the video to match against");
         }
+    }
+
+    /** The best of the video's own subtitles in the file's index, for {@code language}; null when there's none. */
+    private List<SubtitleAlign.Span> indexedReference(String language) {
+        List<SubtitleAlign.Span> best = null;
+        int bestRank = Integer.MAX_VALUE;
+        for (Tracks.Group g : mPlayer.getCurrentTracks().getGroups()) {
+            if (g.getType() != C.TRACK_TYPE_TEXT) continue;
+            for (int i = 0; i < g.length; i++) {
+                if (!g.isTrackSupported(i)) continue;
+                Format f = g.getTrackFormat(i);
+                int rank = SubtitleSync.rank(f.sampleMimeType, f.codecs, f.selectionFlags, f.roleFlags, f.label,
+                        VideoPlayerActivity.sameLanguage(language, f.language), true);
+                List<SubtitleAlign.Span> lines = indexLines(f.id);
+                if (rank >= 0 && rank < bestRank && lines != null && lines.size() >= SubtitleSync.MIN_INDEX_LINES) {
+                    bestRank = rank;
+                    best = lines;
+                }
+            }
+        }
+        return best;
     }
 
     /** A track's lines in the index; the file's track number is the format's id. */
@@ -448,6 +526,14 @@ final class SubtitleDriver implements Player.Listener {
         mListening = false;
         mLineStartMs = C.TIME_UNSET;
         mHandler.removeCallbacks(mFollow);
+    }
+
+    private static List<CuesWithTiming> parse(Subtitles.Track track) throws Exception {
+        List<CuesWithTiming> cues = new ArrayList<>();
+        byte[] data = download(track.url);
+        parser(track.url, data).parse(data, 0, data.length, SubtitleParser.OutputOptions.allCues(), cues::add);
+        java.util.Collections.sort(cues, (a, b) -> Long.compare(a.startTimeUs, b.startTimeUs));
+        return cues;
     }
 
     private static SubtitleParser parser(String url, byte[] data) {
