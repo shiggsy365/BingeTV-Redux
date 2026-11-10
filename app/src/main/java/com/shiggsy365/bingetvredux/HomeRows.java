@@ -198,8 +198,10 @@ final class HomeRows {
                 if (store.isDismissed(meta.id)) return null;
                 Video next = next(meta, store.watchedEpisodes(meta.id), today);
                 if (next == null) return null;
-                String what = "Next: " + DetailsActivity.episodeCode(next)
-                        + (next.title.isEmpty() ? "" : "  ·  " + next.title);
+                // Airing within the week: when, in place of its title.
+                String what = DetailsActivity.episodeCode(next)
+                        + (!next.isReleased(today) ? "  ·  " + coming(next.airDate())
+                        : next.title.isEmpty() ? "" : "  ·  " + next.title);
                 return new Timed(Long.parseLong(show[2]), meta.forRow(what, next.overview));
             });
         }
@@ -212,7 +214,14 @@ final class HomeRows {
         return out;
     }
 
-    /** The episode after the furthest one watched, if it has aired; specials don't count. */
+    /** How far ahead the next episode may air and still be Next Up (saying when). */
+    static final int NEXT_UP_AHEAD_DAYS = 7;
+
+    /**
+     * The episode after the furthest one watched, if it has aired or airs within the week;
+     * specials don't count. One with no date (or "null") isn't next: those are placeholders for
+     * episodes nobody has scheduled yet.
+     */
     static Video next(MetaItem meta, Set<String> watched, String today) {
         List<Video> episodes = new ArrayList<>();
         for (int season : meta.seasons()) if (season != 0) episodes.addAll(meta.episodes(season));
@@ -225,10 +234,39 @@ final class HomeRows {
         for (int i = last + 1; i < episodes.size(); i++) {
             Video v = episodes.get(i);
             if (!watched.contains(v.season + ":" + v.episode)) {
-                return v.isReleased(today) ? v : null;
+                String date = v.airDate();
+                return !date.isEmpty() && date.compareTo(daysAfter(today, NEXT_UP_AHEAD_DAYS)) <= 0
+                        ? v : null;
             }
         }
         return null;
+    }
+
+    /** The ISO day {@code days} after {@code isoDay}. */
+    static String daysAfter(String isoDay, int days) {
+        SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT);
+        iso.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+        try {
+            Date day = iso.parse(isoDay);
+            return day == null ? isoDay : iso.format(new Date(day.getTime() + days * 86_400_000L));
+        } catch (java.text.ParseException e) {
+            return isoDay;
+        }
+    }
+
+    /** "Coming Friday" for an ISO date within the week. */
+    private static String coming(String isoDay) {
+        SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT);
+        iso.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+        try {
+            Date day = iso.parse(isoDay);
+            if (day == null) return "Coming soon";
+            SimpleDateFormat name = new SimpleDateFormat("EEEE", Locale.UK);
+            name.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+            return "Coming " + name.format(day);
+        } catch (java.text.ParseException e) {
+            return "Coming soon";
+        }
     }
 
     /** Live channels with what's on, recently watched first: the logo as a square tile, and a mini

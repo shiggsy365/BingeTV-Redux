@@ -12,6 +12,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.leanback.widget.BaseGridView;
 import androidx.leanback.widget.HorizontalGridView;
+import androidx.leanback.widget.OnChildViewHolderSelectedListener;
 import androidx.leanback.widget.VerticalGridView;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -149,6 +150,54 @@ public final class CatalogRows {
         mCards.setMaxRecycledViews(PosterAdapter.TYPE_POSTER, 40);
         mCards.setMaxRecycledViews(PosterAdapter.TYPE_SQUARE, 20);
         ShowProgress.addListener(mRedrawBadges);
+    }
+
+    // Home's: only the focused row shows, at the bottom, with dots for where it is.
+    private boolean mOneRow;
+    private static final long ROW_FADE_MS = 150;
+
+    /**
+     * Home: just the focused row, its bottom at the grid's bottom (the rows after it are below
+     * the screen, those before it fade out), with dots by its title saying where it is.
+     */
+    public void showOneRow() {
+        mOneRow = true;
+        // A little below the bottom: 12dp under the posters rather than the row's own 20.
+        mGrid.setWindowAlignmentOffset(Math.round(8 * mGrid.getResources().getDisplayMetrics().density));
+        mGrid.setWindowAlignmentOffsetPercent(100f);
+        mGrid.setItemAlignmentOffsetPercent(100f);
+        mGrid.addOnChildViewHolderSelectedListener(new OnChildViewHolderSelectedListener() {
+            @Override
+            public void onChildViewHolderSelected(@NonNull RecyclerView parent,
+                    RecyclerView.ViewHolder child, int position, int subposition) {
+                showSelectedRow();
+            }
+        });
+    }
+
+    /** One row: the selected one shows and the others fade; every row's dots are up to date. */
+    private void showSelectedRow() {
+        if (!mOneRow) return;
+        int selected = mGrid.getSelectedPosition();
+        for (int i = 0; i < mGrid.getChildCount(); i++) {
+            RecyclerView.ViewHolder h = mGrid.getChildViewHolder(mGrid.getChildAt(i));
+            if (!(h instanceof RowHolder)) continue;
+            int at = h.getBindingAdapterPosition();
+            h.itemView.animate().alpha(at == selected ? 1f : 0f).setDuration(ROW_FADE_MS).start();
+            ((RowHolder) h).dots.setText(dots(at));
+        }
+    }
+
+    /** "● ● ● ●" with the row's own brighter. */
+    private CharSequence dots(int position) {
+        android.text.SpannableStringBuilder out = new android.text.SpannableStringBuilder();
+        for (int i = 0; i < mShown.size(); i++) {
+            int start = out.length();
+            out.append("●");
+            out.setSpan(new android.text.style.ForegroundColorSpan(i == position ? 0xFFFFFFFF : 0x4DFFFFFF),
+                    start, out.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        return out;
     }
 
     /** Called when rows appear or disappear (e.g. to show "nothing here"). */
@@ -369,6 +418,8 @@ public final class CatalogRows {
         // Unless someone's in the rows, the first stays at the top (one inserted above it
         // would otherwise sit out of sight).
         if (at == 0 && !mGrid.hasFocus()) mGrid.scrollToPosition(0);
+        // The other rows' dots count this one too.
+        mGrid.post(this::showSelectedRow);
         if (mOnChanged != null) mOnChanged.run();
     }
 
@@ -394,6 +445,12 @@ public final class CatalogRows {
         public void onBindViewHolder(@NonNull RowHolder holder, int position) {
             Row row = mShown.get(position);
             holder.title.setText(row.title);
+            holder.dots.setVisibility(mOneRow ? View.VISIBLE : View.GONE);
+            if (mOneRow) {
+                holder.dots.setText(dots(position));
+                holder.itemView.animate().cancel();
+                holder.itemView.setAlpha(position == mGrid.getSelectedPosition() ? 1f : 0f);
+            }
             if (row.adapter == null) row.adapter = new PosterAdapter(row);
             holder.items.setAdapter(row.adapter);
             if (!row.loaded) load(row);
@@ -407,11 +464,13 @@ public final class CatalogRows {
 
     private static final class RowHolder extends RecyclerView.ViewHolder {
         final TextView title;
+        final TextView dots;
         final HorizontalGridView items;
 
         RowHolder(View view) {
             super(view);
             title = view.findViewById(R.id.row_title);
+            dots = view.findViewById(R.id.row_dots);
             items = view.findViewById(R.id.row_items);
             // Focus stays at the left of the row as it scrolls, like the title above it.
             int margin = view.getResources().getDimensionPixelSize(R.dimen.screen_margin);

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The episode ("S02 - E02") on Home's hero and the info page's episode cards: the fact chips
+     inverted, filled in their dark red, a little see-through. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <corners android:radius="5dp" />
+    <solid android:color="#CC8C1219" />
+</shape>

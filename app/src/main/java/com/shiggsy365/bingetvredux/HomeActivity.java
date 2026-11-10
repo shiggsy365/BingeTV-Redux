@@ -47,7 +47,12 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     private ImageView mBackdropFull;
     private ImageView mHeroLogo;
     private TextView mHeroTitle;
+    private View mHeroSubtitleLine;
+    private TextView mHeroEpisode;
     private TextView mHeroSubtitle;
+    // A card's line starting with its episode ("S2 E3  ·  …"): shown as a chip.
+    private static final java.util.regex.Pattern EPISODE =
+            java.util.regex.Pattern.compile("^S(\\d+) E(\\d+)(?:\\s+·\\s+)?(.*)$");
     private LinearLayout mHeroFacts;
     private LinearLayout mHeroGenres;
     private TextView mHeroDesc;
@@ -115,6 +120,8 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         mBackdropDim = findViewById(R.id.backdrop_dim);
         mHeroLogo = findViewById(R.id.hero_logo);
         mHeroTitle = findViewById(R.id.hero_title);
+        mHeroSubtitleLine = findViewById(R.id.hero_subtitle_line);
+        mHeroEpisode = findViewById(R.id.hero_episode);
         mHeroSubtitle = findViewById(R.id.hero_subtitle);
         mHeroFacts = findViewById(R.id.hero_facts);
         mHeroGenres = findViewById(R.id.hero_genres);
@@ -123,6 +130,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         mEmpty = findViewById(R.id.empty);
         mRowsView = findViewById(R.id.rows);
         mRows = new CatalogRows(this, mRowsView, this);
+        mRows.showOneRow();
         // Up from the first row goes to the menu bar (the grid keeps Up to itself otherwise).
         mRowsView.setOnKeyInterceptListener(event -> {
             if (event.getKeyCode() != KeyEvent.KEYCODE_DPAD_UP
@@ -511,8 +519,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         mHeroLogo.setVisibility(View.GONE);
         mHeroTitle.setText(title);
         mHeroTitle.setVisibility(View.VISIBLE);
-        mHeroSubtitle.setText("See the whole catalog");
-        mHeroSubtitle.setVisibility(View.VISIBLE);
+        showSubtitle("See the whole catalog");
         mHeroSubtitle2.setVisibility(View.GONE);
         InfoChips.fill(mHeroFacts, new ArrayList<>());
         InfoChips.fill(mHeroGenres, new ArrayList<>());
@@ -598,7 +605,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
             Images.fadeSoft(mBackdropFull, null);
             Images.load(mHeroLogo, null);
             mHeroTitle.setText(null);
-            mHeroSubtitle.setVisibility(View.GONE);
+            showSubtitle("");
             mHeroSubtitle2.setVisibility(View.GONE);
             InfoChips.fill(mHeroFacts, new ArrayList<>());
             InfoChips.fill(mHeroGenres, new ArrayList<>());
@@ -616,13 +623,27 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         Images.logo(mHeroLogo, mHeroTitle, item.logo);
         // A second line (a channel's "On Next") gets a line of its own, each cut short if long.
         String[] lines = item.subtitle.split("\n", 2);
-        mHeroSubtitle.setText(lines[0]);
-        mHeroSubtitle.setVisibility(lines[0].isEmpty() ? View.GONE : View.VISIBLE);
+        showSubtitle(lines[0]);
         mHeroSubtitle2.setText(lines.length > 1 ? lines[1] : null);
         mHeroSubtitle2.setVisibility(lines.length > 1 ? View.VISIBLE : View.GONE);
         InfoChips.fill(mHeroFacts, InfoChips.facts(item));
         InfoChips.fill(mHeroGenres, InfoChips.genres(item));
         mHeroDesc.setText(item.description);
+    }
+
+    /** The hero's first line; a leading episode ("S2 E3") becomes a chip, "S02 - E03". */
+    private void showSubtitle(String line) {
+        java.util.regex.Matcher m = EPISODE.matcher(line);
+        String rest = line;
+        if (m.matches()) {
+            mHeroEpisode.setText(DetailsActivity.chipCode(
+                    Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2))));
+            rest = m.group(3).trim();
+        }
+        mHeroEpisode.setVisibility(m.matches() ? View.VISIBLE : View.GONE);
+        mHeroSubtitle.setText(rest);
+        mHeroSubtitle.setVisibility(rest.isEmpty() ? View.GONE : View.VISIBLE);
+        mHeroSubtitleLine.setVisibility(line.isEmpty() ? View.GONE : View.VISIBLE);
     }
 
     /** "2010 · 2h 28m · ★ 8.8 · Action, Sci-Fi". */

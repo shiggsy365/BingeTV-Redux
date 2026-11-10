@@ -71,7 +71,7 @@
                 android:id="@+id/up_next_countdown"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:fontFamily="sans-serif-medium"
+                android:fontFamily="?attr/fontMedium"
                 android:textColor="@color/guide_accent"
                 android:textSize="11sp" />
 
@@ -123,7 +123,7 @@
             android:id="@+id/skip_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="sans-serif-medium"
+            android:fontFamily="?attr/fontMedium"
             android:textColor="#FFFFFFFF"
             android:textSize="15sp" />
 

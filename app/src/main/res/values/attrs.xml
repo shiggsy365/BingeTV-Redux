@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The app's medium weight (labels, titles, buttons): Figtree Medium from Android 8, where
+         apps' own fonts work in layouts (values-v26); the system's before. -->
+    <attr name="fontMedium" format="reference|string" />
+</resources>

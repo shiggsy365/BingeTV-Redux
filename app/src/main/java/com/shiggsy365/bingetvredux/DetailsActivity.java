@@ -562,6 +562,11 @@ public class DetailsActivity extends Activity {
         return String.format(Locale.ROOT, "S%d E%d", v.season, v.episode);
     }
 
+    /** An episode as its chip shows it: "S02 - E02". */
+    static String chipCode(int season, int episode) {
+        return String.format(Locale.ROOT, "S%02d - E%02d", season, episode);
+    }
+
     static String clock(long ms) {
         long s = ms / 1000;
         return s >= 3600
@@ -807,7 +812,7 @@ public class DetailsActivity extends Activity {
     private void styleTab(TextView tab, int season) {
         boolean current = season == mTab;
         tab.setSelected(current);
-        tab.setTypeface(null, current ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        tab.setTypeface(current ? Fonts.semiBold(this) : Fonts.regular(this));
         tab.setTextColor(current || tab.isFocused() ? 0xFFFFFFFF
                 : seasonWatched(season) ? 0xFF6E6E6E : 0xFFA0A0A0);
     }
@@ -870,12 +875,14 @@ public class DetailsActivity extends Activity {
             boolean released = v.isReleased(mToday);
             Images.load(view.findViewById(R.id.card_image), v.thumbnail);
             TextView code = view.findViewById(R.id.card_code);
-            code.setText(episodeCode(v));
+            code.setText(chipCode(v.season, v.episode));
             code.setVisibility(v.season == Video.NONE || v.episode == Video.NONE ? View.GONE : View.VISIBLE);
             ((TextView) view.findViewById(R.id.card_title)).setText(v.title);
             ((TextView) view.findViewById(R.id.card_overview)).setText(v.overview);
             String date = longDate(v.airDate());
-            ((TextView) view.findViewById(R.id.card_subtitle)).setText(released ? date : "Coming " + date);
+            TextView aired = view.findViewById(R.id.card_subtitle);
+            aired.setText(released ? date : "Coming " + date);
+            aired.setVisibility(date.isEmpty() ? View.INVISIBLE : View.VISIBLE);
             TextView rating = view.findViewById(R.id.card_rating);
             rating.setText(v.rating > 0 ? String.format(Locale.ROOT, "%.1f", v.rating) : "");
             rating.setVisibility(v.rating > 0 ? View.VISIBLE : View.GONE);

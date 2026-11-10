@@ -88,7 +88,7 @@
                     android:layout_marginEnd="12dp"
                     android:background="@drawable/vpn_chip"
                     android:focusable="true"
-                    android:fontFamily="sans-serif-medium"
+                    android:fontFamily="?attr/fontMedium"
                     android:nextFocusDown="@+id/grid"
                     android:paddingStart="12dp"
                     android:paddingTop="4dp"
@@ -136,13 +136,13 @@
             </LinearLayout>
         </FrameLayout>
 
-        <!-- Details of the highlighted programme, up to the preview's left edge: the preview
-             is 320dp wide at the screen edge, less this layout's end padding. -->
+        <!-- Details of the highlighted programme, stopping 16dp short of the preview: it's
+             320dp wide at the screen edge, less this layout's 48dp end padding, plus the gap. -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="110dp"
             android:layout_marginTop="14dp"
-            android:layout_marginEnd="272dp"
+            android:layout_marginEnd="288dp"
             android:orientation="vertical">
 
             <TextView
@@ -150,7 +150,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
-                android:fontFamily="sans-serif-medium"
+                android:fontFamily="?attr/fontMedium"
                 android:shadowColor="#CC000000"
                 android:shadowRadius="4"
                 android:singleLine="true"
@@ -199,7 +199,6 @@
                         android:id="@+id/ruler_date"
                         android:layout_width="@dimen/guide_channel_column"
                         android:layout_height="match_parent"
-                        android:fontFamily="sans-serif"
                         android:gravity="center_vertical"
                         android:textColor="@color/guide_muted"
                         android:textSize="12sp" />
@@ -235,7 +234,6 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:gravity="center"
-                android:fontFamily="sans-serif"
                 android:textColor="@color/guide_muted"
                 android:textSize="15sp"
                 android:visibility="gone" />

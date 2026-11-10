@@ -24,7 +24,7 @@ public class HomeRowsTest {
     private static MetaItem show(String... episodes) throws Exception {
         JSONArray videos = new JSONArray();
         for (String e : episodes) {
-            String[] p = e.split(":");
+            String[] p = e.split(":", -1);
             videos.put(new JSONObject().put("id", "tt1:" + p[0] + ":" + p[1])
                     .put("season", Integer.parseInt(p[0])).put("episode", Integer.parseInt(p[1]))
                     .put("released", p[2]));
@@ -53,8 +53,26 @@ public class HomeRowsTest {
     public void nothingNextWhenUnstartedFinishedOrUnaired() throws Exception {
         MetaItem show = show("1:1:2026-01-01", "1:2:2026-12-25");
         assertNull(HomeRows.next(show, watched(), TODAY));
+        // More than a week off.
         assertNull(HomeRows.next(show, watched("1:1"), TODAY));
         assertNull(HomeRows.next(show, watched("1:1", "1:2"), TODAY));
+    }
+
+    @Test
+    public void nextAiringWithinTheWeekOnly() throws Exception {
+        // TODAY is 2026-10-30: a week on is 2026-11-06.
+        MetaItem soon = show("1:1:2026-10-23", "1:2:2026-11-06");
+        assertEquals(2, HomeRows.next(soon, watched("1:1"), TODAY).episode);
+        MetaItem later = show("1:1:2026-10-23", "1:2:2026-11-07");
+        assertNull(HomeRows.next(later, watched("1:1"), TODAY));
+    }
+
+    @Test
+    public void nothingNextWithoutADate() throws Exception {
+        MetaItem show = show("1:1:2026-10-23", "1:2:null");
+        assertNull(HomeRows.next(show, watched("1:1"), TODAY));
+        show = show("1:1:2026-10-23", "1:2:");
+        assertNull(HomeRows.next(show, watched("1:1"), TODAY));
     }
 
     @Test

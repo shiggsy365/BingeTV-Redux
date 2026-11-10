@@ -38,7 +38,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:ellipsize="end"
-                    android:fontFamily="sans-serif-medium"
+                    android:fontFamily="?attr/fontMedium"
                     android:gravity="center_vertical"
                     android:maxLines="2"
                     android:textColor="#FFFFFFFF"

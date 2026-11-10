@@ -243,7 +243,7 @@ final class StreamCards {
             badge.setText((String) s[0]);
             badge.setTextColor((Integer) s[2]);
             badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-            badge.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+            badge.setTypeface(Fonts.semiBold(badge.getContext()));
             badge.setGravity(Gravity.CENTER);
             badge.setSingleLine(true);
             badge.setPadding(Math.round(6 * dp), 0, Math.round(6 * dp), 0);

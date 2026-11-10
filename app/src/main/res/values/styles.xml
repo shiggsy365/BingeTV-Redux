@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- The app's theme: Leanback's, with the app's fonts (Figtree from Android 8: values-v26). -->
+    <style name="Theme.Redux" parent="Theme.Leanback">
+        <item name="fontMedium">sans-serif-medium</item>
+    </style>
+
     <!-- Small rounded label: stream sources and catch-up. -->
     <style name="Chip.Small" parent="">
         <item name="android:layout_width">wrap_content</item>
@@ -12,7 +17,7 @@
         <item name="android:singleLine">true</item>
         <item name="android:textColor">@color/guide_text</item>
         <item name="android:textSize">11sp</item>
-        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:fontFamily">?attr/fontMedium</item>
     </style>
 
     <!-- Up Next: a remote button and what it does. -->
@@ -24,7 +29,6 @@
         <item name="android:paddingBottom">2dp</item>
         <item name="android:textColor">#FFFFFFFF</item>
         <item name="android:textSize">10sp</item>
-        <item name="android:fontFamily">sans-serif</item>
     </style>
 
     <style name="Chip.Small.Catchup">
@@ -44,7 +48,7 @@
         <item name="android:paddingBottom">5dp</item>
         <item name="android:textColor">@color/guide_chip_text</item>
         <item name="android:textSize">13sp</item>
-        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:fontFamily">?attr/fontMedium</item>
     </style>
 
     <!-- Menu bar item: a pill when focused, a soft fill for the page on screen. -->
@@ -60,7 +64,7 @@
         <item name="android:paddingBottom">6dp</item>
         <item name="android:textColor">@color/guide_chip_text</item>
         <item name="android:textSize">15sp</item>
-        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:fontFamily">?attr/fontMedium</item>
     </style>
 
     <style name="RowTitle" parent="">
@@ -68,7 +72,7 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:textColor">@color/guide_text</item>
         <item name="android:textSize">16sp</item>
-        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:fontFamily">?attr/fontMedium</item>
     </style>
 
     <!-- A stream card's text line ("Quality: BluRay | HEVC"). -->
@@ -106,7 +110,7 @@
         <item name="android:gravity">center_vertical</item>
         <item name="android:textColor">#FFFFFFFF</item>
         <item name="android:textSize">19sp</item>
-        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:fontFamily">?attr/fontMedium</item>
     </style>
 
     <!-- Big action buttons on the info page. -->

@@ -43,7 +43,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="match_parent"
                     android:ellipsize="end"
-                    android:fontFamily="sans-serif-medium"
+                    android:fontFamily="?attr/fontMedium"
                     android:gravity="center_vertical"
                     android:singleLine="true"
                     android:textColor="#FFFFFFFF"
@@ -84,6 +84,7 @@
 
         <TextView
             android:id="@+id/osd_clock"
+            android:fontFeatureSettings="tnum"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="top|end"
@@ -117,12 +118,13 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:fontFamily="sans-serif-medium"
+                android:fontFamily="?attr/fontMedium"
                 android:textColor="#FFFFFFFF"
                 android:textSize="14sp" />
 
             <TextView
                 android:id="@+id/osd_time"
+                android:fontFeatureSettings="tnum"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#FFFFFFFF"

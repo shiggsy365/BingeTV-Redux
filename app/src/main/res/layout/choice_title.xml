@@ -3,7 +3,7 @@
 <TextView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="46dp"
-    android:fontFamily="sans-serif-medium"
+    android:fontFamily="?attr/fontMedium"
     android:gravity="center_vertical"
     android:paddingStart="22dp"
     android:paddingEnd="20dp"

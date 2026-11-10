@@ -117,7 +117,7 @@
                     android:layout_height="wrap_content"
                     android:alpha="0"
                     android:ellipsize="end"
-                    android:fontFamily="sans-serif-medium"
+                    android:fontFamily="?attr/fontMedium"
                     android:gravity="center"
                     android:shadowColor="#CC000000"
                     android:shadowRadius="4"
@@ -129,6 +129,7 @@
 
             <TextView
                 android:id="@+id/clock"
+                android:fontFeatureSettings="tnum"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:shadowColor="#CC000000"
@@ -139,6 +140,7 @@
 
         <!-- The focused title, as BingeTV's: a centred column at the left with its logo (or
              name), what to watch next, chips for its facts and genres, and its plot. -->
+        <!-- Down to the trailer window's bottom edge; the plot takes what's left of it. -->
         <LinearLayout
             android:id="@+id/hero"
             android:layout_width="316dp"
@@ -164,24 +166,48 @@
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:ellipsize="end"
-                    android:fontFamily="sans-serif-medium"
+                    android:fontFamily="?attr/fontMedium"
                     android:gravity="center"
                     android:maxLines="2"
                     android:textColor="#FFFFFFFF"
                     android:textSize="24sp" />
             </FrameLayout>
 
-            <TextView
-                android:id="@+id/hero_subtitle"
-                android:layout_width="match_parent"
+            <!-- What to watch: the episode as a chip, then its name (or time left, or when it airs) -->
+            <LinearLayout
+                android:id="@+id/hero_subtitle_line"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="7dp"
-                android:ellipsize="end"
-                android:gravity="center"
-                android:singleLine="true"
-                android:textColor="#FFFFFFFF"
-                android:textSize="16sp"
-                android:visibility="gone" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/hero_episode"
+                    android:layout_width="wrap_content"
+                    android:layout_height="21dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/episode_chip"
+                    android:fontFamily="?attr/fontMedium"
+                    android:gravity="center"
+                    android:paddingStart="9dp"
+                    android:paddingEnd="9dp"
+                    android:singleLine="true"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/hero_subtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxWidth="316dp"
+                    android:singleLine="true"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="16sp" />
+            </LinearLayout>
 
             <!-- a channel's "On Next", under its "On Now" -->
             <TextView
@@ -213,32 +239,29 @@
             <com.shiggsy365.bingetvredux.ScrollingText
                 android:id="@+id/hero_desc"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:layout_marginTop="7dp"
                 android:ellipsize="end"
                 android:lineSpacingExtra="1dp"
-                android:maxLines="3"
                 android:textColor="#FFEEEEEE"
                 android:textSize="13sp" />
         </LinearLayout>
 
-        <!-- Rows scrolling up are clipped here (fading out over the top edge) rather than
-             drawn over the hero until they're recycled. -->
+        <!-- One row at a time, at the bottom (CatalogRows.showOneRow); the row before it fades
+             out. Its title may reach a little above this, beside the trailer's bottom edge. -->
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:clipChildren="true">
+            android:clipChildren="false">
 
             <androidx.leanback.widget.VerticalGridView
                 android:id="@+id/rows"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:clipChildren="false"
-                android:clipToPadding="false"
-                android:fadingEdgeLength="36dp"
-                android:paddingBottom="48dp"
-                android:requiresFadingEdge="vertical" />
+                android:clipToPadding="false" />
 
             <TextView
                 android:id="@+id/empty"

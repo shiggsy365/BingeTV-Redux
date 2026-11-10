@@ -16,7 +16,7 @@
         android:ellipsize="end"
         android:textColor="@color/guide_text"
         android:textSize="16sp"
-        android:fontFamily="sans-serif-medium" />
+        android:fontFamily="?attr/fontMedium" />
 
     <ListView
         android:id="@+id/stream_menu_list"

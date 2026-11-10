@@ -19,7 +19,6 @@
             android:layout_gravity="start"
             android:layout_marginStart="8dp"
             android:gravity="center_vertical"
-            android:fontFamily="sans-serif"
             android:textColor="@color/guide_muted"
             android:textSize="11sp" />
 

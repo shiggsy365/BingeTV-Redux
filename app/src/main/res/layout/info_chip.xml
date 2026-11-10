@@ -7,6 +7,7 @@
     android:layout_marginEnd="2.5dp"
     android:background="@drawable/info_chip"
     android:gravity="center"
+    android:letterSpacing="0.05"
     android:paddingStart="9dp"
     android:paddingEnd="9dp"
     android:singleLine="true"

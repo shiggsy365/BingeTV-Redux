@@ -17,7 +17,9 @@ import android.widget.TextView;
 public class ScrollingText extends TextView {
     private static final long START_AFTER_MS = 5_000, HOLD_END_MS = 4_000, MS_PER_LINE = 1_400;
 
-    private final int mVisibleLines;
+    // maxLines, or with a set height (Home's description, down to the row below it) the whole
+    // lines that fit.
+    private int mVisibleLines;
     private float mScroll;
     private ValueAnimator mAnimator;
     private final Runnable mStart = this::startScrolling;
@@ -39,6 +41,15 @@ public class ScrollingText extends TextView {
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY && getLineHeight() > 0) {
+            int fit = Math.max(1, (MeasureSpec.getSize(heightMeasureSpec) - getPaddingTop()
+                    - getPaddingBottom()) / getLineHeight());
+            if (fit != mVisibleLines) {
+                mVisibleLines = fit;
+                post(this::restart);
+            }
+            return;
+        }
         Layout layout = getLayout();
         if (layout == null) return;
         int lines = Math.min(layout.getLineCount(), mVisibleLines);

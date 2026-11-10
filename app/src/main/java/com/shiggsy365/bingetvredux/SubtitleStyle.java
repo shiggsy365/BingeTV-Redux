@@ -3,7 +3,6 @@ package com.shiggsy365.bingetvredux;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
-import android.graphics.Typeface;
 
 import androidx.annotation.OptIn;
 import androidx.media3.common.util.UnstableApi;
@@ -70,7 +69,7 @@ final class SubtitleStyle {
         int background = outline == 2 ? 0xCC000000 : Color.TRANSPARENT;
         view.setApplyEmbeddedStyles(false);
         view.setStyle(new CaptionStyleCompat(COLOUR_VALUES[colour(context)], background, Color.TRANSPARENT,
-                edge, Color.BLACK, Typeface.create("sans-serif-medium", Typeface.NORMAL)));
+                edge, Color.BLACK, Fonts.medium(context)));
         view.setFractionalTextSize(SIZE_VALUES[size(context)]);
     }
 }

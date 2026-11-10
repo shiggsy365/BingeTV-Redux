@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Figtree throughout. -->
+    <style name="Theme.Redux" parent="Theme.Leanback">
+        <item name="fontMedium">@font/figtree_medium_family</item>
+        <item name="android:fontFamily">@font/figtree</item>
+    </style>
+</resources>
