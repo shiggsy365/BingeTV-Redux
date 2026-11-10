@@ -65,6 +65,9 @@ public class GuideActivity extends Activity {
     // Space between the channel column and the programme cells (guide_grid_row.xml).
     private static final int COLUMN_GAP_DP = 3;
     private static final long GROUP_FOCUS_MS = 160;
+    /** Opens on this channel (All channels) at this time: a programme found in Search. */
+    static final String EXTRA_CHANNEL_ID = "channel_id";
+    static final String EXTRA_TIME = "time";
 
     private LinearLayout mChips;
     private android.widget.HorizontalScrollView mGroupsScroll;
@@ -489,6 +492,19 @@ public class GuideActivity extends Activity {
             if (mChannels.get(i).id == focusedChannel) row = i;
         }
         mRow = first ? 0 : row;
+        long openAt = getIntent().getLongExtra(EXTRA_TIME, 0);
+        if (first && openAt > 0) {
+            // A programme from Search: its channel, and the window from its half hour.
+            long channelId = getIntent().getLongExtra(EXTRA_CHANNEL_ID, -1);
+            for (int i = 0; i < mChannels.size(); i++) {
+                if (mChannels.get(i).id == channelId) mRow = i;
+            }
+            mWindowStart = floorStep(Math.min(openAt, System.currentTimeMillis() + MAX_AHEAD_MS));
+            mFocusTime = Math.max(openAt, mWindowStart);
+            mFollowNow = false;
+            groupsFocused = false;
+            mLayoutManager.scrollToPositionWithOffset(mRow, 0);
+        }
         mAdapter.notifyDataSetChanged();
         if (groupsFocused) {
             mGridMode = false;

@@ -15,9 +15,8 @@ import com.shiggsy365.bingetvredux.stremio.Metas;
 
 /**
  * Home's trailers: when focus rests on a title for a few seconds (the profile's setting), its
- * YouTube trailer plays in a window at the top right, with or without sound: as it's about to
- * start, the artwork fades to black, then the trailer fades in. Moving on stops it and brings
- * the artwork back. A title whose catalog entry doesn't name a trailer is looked up in full
+ * YouTube trailer plays in a window at the top right, with or without sound, fading in over the
+ * title's artwork and blending into it at the edges (see EdgeFadeFrame). Moving on stops it. A title whose catalog entry doesn't name a trailer is looked up in full
  * first.
  */
 final class HeroTrailer {
@@ -25,7 +24,7 @@ final class HeroTrailer {
 
     private final Activity mActivity;
     private final PlayerView mView;
-    // The artwork that fades out while a trailer plays.
+    // What fades out while a trailer plays (the clock, over its corner).
     private final View[] mArtwork;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final Background.Tasks mExecutor = new Background.Tasks(1);

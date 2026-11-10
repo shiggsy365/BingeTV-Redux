@@ -64,12 +64,15 @@ updates** (in Settings) checks straight away.
   for streams, audio, subtitles (tracks from the video or your subtitle addons, an offset to fix
   lip sync, and a style), picture size and speed. If a stream fails, the next one is tried. Near
   the end of an episode, Up Next counts down to the next one (from the start of the credits,
-  where they're known). While an intro, recap or credits play, a "Skip intro" chip skips them
+  where they're known), and after a few episodes in a row with no button pressed it asks "Are you
+  still watching?" first (how many is a profile setting). While an intro, recap or credits play,
+  a "Skip intro" chip skips them
   (times from IntroDB, and AniSkip for anime); episodes also have a "Skip 85 s" button. Before
   playback starts, the TV
   switches to the refresh rate that suits the video (50 Hz for UK television) where it has one,
   so there's no flash once it's playing.
-- **Search** across all your search catalogs, podcasts and radio stations as you type, with your
+- **Search** across all your search catalogs, the live TV guide (what's on now, coming up, or on
+  catch-up), podcasts and radio stations as you type, with your
   recent searches and IMDb's suggestions as chips under the box.
 - **Radio:** favourite stations, the most popular in your country and worldwide, and genres.
   Stations keep playing while you browse (back to them from ♪ on the menu bar), and the remote's
@@ -152,6 +155,10 @@ from it keeps its Apache 2.0 licence and notices (see [LICENSE-APACHE-2.0](LICEN
 
 The app's text is set in [Figtree](https://github.com/erikdkennedy/figtree), under the SIL Open
 Font License 1.1 (see [Figtree-OFL.txt](app/src/main/assets/licenses/Figtree-OFL.txt)).
+
+The menu bar's Home, Films, TV, Live TV, Radio, Podcasts and Search icons are from
+[Solar](https://www.figma.com/community/file/1166831539721848736) by 480 Design, under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 Automatic subtitle sync (`SubtitleAlign.java` and `SubtitleSync.java`) is ported from
 [AIOStreams](https://github.com/Viren070/AIOStreams), and those files keep its AGPL-3.0 licence

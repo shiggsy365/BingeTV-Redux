@@ -84,7 +84,7 @@ function renderCatalogs() {
   // The same shapes the TV draws.
   $('hubIcons').innerHTML = (catalogData.icons || []).map(i =>
       `<button class="chip icon-chip${i.key === hub.icon ? ' active' : ''}" data-icon="${esc(i.key)}"
-        title="${esc(i.label)}"><svg viewBox="0 0 24 24"><path d="${esc(i.path)}"/></svg></button>`).join('');
+        title="${esc(i.label)}"><svg viewBox="0 0 24 24"><path d="${esc(i.path)}"${i.evenOdd ? ' fill-rule="evenodd"' : ''}/></svg></button>`).join('');
   $('hubDelete').hidden = !hub.custom;
   const options = hubs.map(h => `<option value="${esc(h.id)}">${esc(h.name)}</option>`).join('');
   if (!hub.catalogs.length) {

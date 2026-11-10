@@ -31,18 +31,25 @@
         android:importantForAccessibility="no" />
 
     <!-- A trailer (if the profile has them on): a window at the top right, 60% of the screen
-         each way, once the artwork has faded to black. -->
-    <androidx.media3.ui.PlayerView
-        android:id="@+id/hero_video"
+         each way, its bottom level with the top of the row's dots, its edges fading into the
+         title's artwork behind it. -->
+    <com.shiggsy365.bingetvredux.EdgeFadeFrame
         android:layout_width="576dp"
         android:layout_height="324dp"
         android:layout_gravity="top|end"
-        android:alpha="0"
-        android:focusable="false"
-        app:resize_mode="fit"
-        app:shutter_background_color="@android:color/transparent"
-        app:surface_type="texture_view"
-        app:use_controller="false" />
+        android:layout_marginTop="12dp">
+
+        <androidx.media3.ui.PlayerView
+            android:id="@+id/hero_video"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:alpha="0"
+            android:focusable="false"
+            app:resize_mode="fit"
+            app:shutter_background_color="@android:color/transparent"
+            app:surface_type="texture_view"
+            app:use_controller="false" />
+    </com.shiggsy365.bingetvredux.EdgeFadeFrame>
 
 
 
@@ -98,13 +105,6 @@
                 android:layout_weight="1"
                 android:clipChildren="false">
 
-                <View
-                    android:id="@+id/menu_pill"
-                    android:layout_width="48dp"
-                    android:layout_height="40dp"
-                    android:alpha="0"
-                    android:background="@drawable/menu_pill" />
-
                 <LinearLayout
                     android:id="@+id/menu_items"
                     android:layout_width="match_parent"
@@ -119,12 +119,13 @@
                     android:ellipsize="end"
                     android:fontFamily="?attr/fontMedium"
                     android:gravity="center"
+                    android:includeFontPadding="false"
                     android:shadowColor="#CC000000"
                     android:shadowRadius="4"
                     android:singleLine="true"
                     android:textColor="#FFFFFFFF"
-                    android:textSize="13sp"
-                    android:translationY="42dp" />
+                    android:textSize="11sp"
+                    android:translationY="-8dp" />
             </FrameLayout>
 
             <TextView

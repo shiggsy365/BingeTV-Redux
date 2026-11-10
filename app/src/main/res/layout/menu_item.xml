@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A menu bar item: an icon, with a short red mark while its page is on screen. The pill and
-     name of the focused item are HomeActivity's. -->
+<!-- A menu bar item: an icon (red while focused), with a short red mark just under it while its
+     page is on screen. The focused item's name is HomeActivity's, just above the icon. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="48dp"
     android:layout_height="40dp"
@@ -20,8 +20,8 @@
         android:id="@+id/menu_marker"
         android:layout_width="14dp"
         android:layout_height="3dp"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="4dp"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="30dp"
         android:background="@drawable/menu_marker"
         android:visibility="invisible" />
 </FrameLayout>

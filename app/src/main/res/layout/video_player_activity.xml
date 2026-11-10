@@ -102,6 +102,60 @@
         </LinearLayout>
     </LinearLayout>
 
+    <!-- Still watching?: instead of Up Next starting the next episode by itself, after several
+         in a row with no button pressed. -->
+    <LinearLayout
+        android:id="@+id/still_watching"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/up_next_card"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingStart="28dp"
+        android:paddingTop="20dp"
+        android:paddingEnd="28dp"
+        android:paddingBottom="20dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="?attr/fontMedium"
+            android:text="Are you still watching?"
+            android:textColor="#FFFFFFFF"
+            android:textSize="20sp" />
+
+        <TextView
+            android:id="@+id/still_watching_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:ellipsize="end"
+            android:maxWidth="360dp"
+            android:singleLine="true"
+            android:textColor="#FFCCCCCC"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/UpNextChip"
+                android:text="@string/still_watching_play"
+                android:textSize="12sp" />
+
+            <TextView
+                style="@style/UpNextChip"
+                android:layout_marginStart="8dp"
+                android:text="@string/still_watching_stop"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
     <!-- Skip intro / recap / credits: while that part plays, OK skips it (see SkipTimes). -->
     <LinearLayout
         android:id="@+id/skip"

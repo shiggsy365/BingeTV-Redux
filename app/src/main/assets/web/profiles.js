@@ -22,6 +22,7 @@ const PROFILE_SETTINGS = [
   {page: 'playback', title: 'Playing', fields: [
     {key: 'playButton', label: 'Play', type: 'select', options: [['auto', 'Plays the best stream'], ['choose', 'Lists the streams to choose from']]},
     {key: 'autoplayNext', label: 'Up Next: play the next episode automatically', type: 'check'},
+    {key: 'stillWatching', label: 'Ask "Still watching?" after this many episodes in a row with no button pressed (0 for never)', type: 'number', min: 0, max: 20},
     {key: 'upNextShort', label: 'Up Next appears this many seconds before the end of episodes under 30 minutes', type: 'number', min: 5, max: 600},
     {key: 'upNextMedium', label: '… of episodes 30 to 60 minutes long', type: 'number', min: 5, max: 600},
     {key: 'upNextLong', label: '… of episodes over an hour', type: 'number', min: 5, max: 900},

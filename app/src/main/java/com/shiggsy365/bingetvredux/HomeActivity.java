@@ -81,7 +81,6 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
     private static final long MENU_FOCUS_MS = 160;
     private static final long ENTER_ROWS_MS = 120;
     private static final int MENU_ART_TRIES = 20;
-    private View mMenuPill;
     private TextView mMenuCaption;
     // The menu item Down was pressed on, until its page's rows are in.
     private View mEnteringFrom;
@@ -111,7 +110,6 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         View logo = findViewById(R.id.menu_logo);
         logo.setOnClickListener(v -> startActivity(new Intent(this, ProfilesActivity.class)));
         logo.setOnFocusChangeListener((v, focused) -> v.post(this::updateMenuMode));
-        mMenuPill = findViewById(R.id.menu_pill);
         mMenuCaption = findViewById(R.id.menu_caption);
         mClock = findViewById(R.id.clock);
         mBackdrop = findViewById(R.id.backdrop);
@@ -147,8 +145,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
             if (mMenuMode && mBackdropFull.getDrawable() == null) pickMenuArt(MENU_ART_TRIES);
         });
         GuideStore.addListener(mGuideChanged);
-        mTrailer = new HeroTrailer(this, findViewById(R.id.hero_video), mBackdrop, mBackdropFull,
-                findViewById(R.id.clock));
+        mTrailer = new HeroTrailer(this, findViewById(R.id.hero_video), findViewById(R.id.clock));
         if (savedInstanceState != null) mPage = savedInstanceState.getString("page", PAGE_HOME);
         if (!sProfileChosen && Profiles.all(this).size() > 1) {
             startActivity(new Intent(this, ProfilesActivity.class));
@@ -344,15 +341,15 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         for (int i = 0; i < mMenu.getChildCount(); i++) styleMenuItem(mMenu.getChildAt(i));
     }
 
-    /** The page on screen has a white icon and a red mark; focused, white; others, dimmer. */
+    /** Focused, a red icon; the page on screen, white with a red mark; others, dimmer. */
     private void styleMenuItem(View item) {
         boolean current = mPage.equals(item.getTag());
-        ((ImageView) item.findViewById(R.id.menu_icon)).setColorFilter(
-                item.hasFocus() || current ? 0xFFFFFFFF : 0x8CFFFFFF);
+        ((ImageView) item.findViewById(R.id.menu_icon)).setColorFilter(item.hasFocus()
+                ? getColor(R.color.guide_accent) : current ? 0xFFFFFFFF : 0x8CFFFFFF);
         item.findViewById(R.id.menu_marker).setVisibility(current ? View.VISIBLE : View.INVISIBLE);
     }
 
-    /** The pill slides to the focused item, its name under it; nothing on the bar moves. */
+    /** The focused item's name slides above it; nothing on the bar moves. */
     private void showMenuFocus(View item) {
         // Focused before the bar is laid out (as the app opens): once it is.
         if (item.getWidth() == 0 || mMenuCaption.getWidth() == 0) {
@@ -361,19 +358,13 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
             });
             return;
         }
-        float pillX = item.getLeft();
-        float captionX = pillX + (item.getWidth() - mMenuCaption.getWidth()) / 2f;
+        float captionX = item.getLeft() + (item.getWidth() - mMenuCaption.getWidth()) / 2f;
         mMenuCaption.setText(item.getContentDescription());
-        if (mMenuPill.getAlpha() == 0f) {
-            mMenuPill.setTranslationX(pillX);
-            mMenuCaption.setTranslationX(captionX);
-        }
-        mMenuPill.animate().translationX(pillX).alpha(1f).setDuration(MENU_FOCUS_MS).start();
+        if (mMenuCaption.getAlpha() == 0f) mMenuCaption.setTranslationX(captionX);
         mMenuCaption.animate().translationX(captionX).alpha(1f).setDuration(MENU_FOCUS_MS).start();
     }
 
     private void hideMenuFocus() {
-        mMenuPill.animate().alpha(0f).setDuration(MENU_FOCUS_MS).start();
         mMenuCaption.animate().alpha(0f).setDuration(MENU_FOCUS_MS).start();
     }
 
@@ -591,6 +582,13 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
         }
     }
 
+    /** A title's backdrop: a channel's is its programme's picture (its logo isn't backdrop material). */
+    private static String heroArt(MetaItem item) {
+        return !item.background.isEmpty() ? item.background
+                : item.id.startsWith(HomeRows.LIVE_PREFIX) || item.id.startsWith(Radio.PREFIX) ? null
+                : item.poster;
+    }
+
     private void bindHero(MetaItem item) {
         if (mMenuMode && !isAudioPage(mPage)) {
             // Shown when the focus goes back to the rows.
@@ -612,10 +610,7 @@ public class HomeActivity extends Activity implements CatalogRows.Listener {
             mHeroDesc.setText(null);
             return;
         }
-        // A channel's backdrop is its program's picture; its logo isn't backdrop material.
-        String art = !item.background.isEmpty() ? item.background
-                : item.id.startsWith(HomeRows.LIVE_PREFIX) || item.id.startsWith(Radio.PREFIX) ? null
-                : item.poster;
+        String art = heroArt(item);
         // Square podcast artwork is too small to show large: only the soft, dimmed layer.
         Images.fade(mBackdrop, isAudioPage(mPage) ? null : art);
         Images.fadeSoft(mBackdropFull, art);

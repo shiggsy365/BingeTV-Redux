@@ -18,5 +18,8 @@
     <!-- Up Next's button chips: the button in bold, then what it does. -->
     <string name="up_next_play"><b>OK</b>  Play now</string>
     <string name="up_next_keep"><b>Back</b>  Keep watching</string>
+    <!-- Still watching?: after several episodes in a row with no button pressed. -->
+    <string name="still_watching_play"><b>OK</b>  Play next episode</string>
+    <string name="still_watching_stop"><b>Back</b>  Stop</string>
     <string name="skip_ok"><b>OK</b></string>
 </resources>

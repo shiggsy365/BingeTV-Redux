@@ -28,6 +28,9 @@ import java.util.Locale;
  * results for each. Searches as you type, after a pause. Opened for a person (from an info
  * page's cast), it searches their name with the people-search catalogs if there are any.
  *
+ * With live TV on, a "Live TV" row has the guide's programmes whose titles match (see
+ * GuideSearch).
+ *
  * Under the box: the profile's recent searches while it's empty, and IMDb's suggestions
  * while typing (a title opens its info page, a person searches for them).
  */
@@ -328,8 +331,9 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
         mSearched = query;
         int generation = ++mGeneration;
         List<AddonStore.Entry> entries = searchEntries();
-        // With no search catalogs, podcasts and radio can still be searched.
-        if (entries.isEmpty() && !Settings.bool(this, Settings.PODCASTS_PAGE)
+        boolean live = !mPerson && Settings.bool(this, Settings.LIVE_TV);
+        // With no search catalogs, the guide, podcasts and radio can still be searched.
+        if (entries.isEmpty() && !live && !Settings.bool(this, Settings.PODCASTS_PAGE)
                 && !Settings.bool(this, Settings.RADIO)) {
             return;
         }
@@ -346,6 +350,9 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
                     .then(items -> PreferredMetas.needed(app, e.addon, items)
                             ? PreferredMetas.fetch(app, e.addon, items) : items)
                     .loadNow());
+        }
+        if (live) {
+            rows.add(new CatalogRows.Row("Live TV", () -> GuideSearch.find(app, query)).loadNow());
         }
         if (!mPerson && Settings.bool(this, Settings.PODCASTS_PAGE)) {
             rows.add(new CatalogRows.Row("Podcasts",
@@ -392,7 +399,7 @@ public class SearchActivity extends Activity implements CatalogRows.Listener {
     @Override
     public void onItemClicked(MetaItem item) {
         remember(mSearched);
-        if (AudioRows.open(this, item)) return;
+        if (AudioRows.open(this, item) || GuideSearch.open(this, item)) return;
         startActivity(DetailsActivity.intent(this, item));
     }
 }

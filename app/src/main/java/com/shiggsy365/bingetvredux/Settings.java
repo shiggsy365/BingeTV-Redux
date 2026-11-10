@@ -35,6 +35,8 @@ public final class Settings {
     /** What Play does: "auto" plays the best stream, "choose" lists them. */
     public static final String PLAY_BUTTON = "playButton";
     public static final String AUTOPLAY_NEXT = "autoplayNext";
+    /** After this many episodes in a row with no button pressed, ask before the next (0: never). */
+    public static final String STILL_WATCHING = "stillWatching";
     public static final String SUBTITLE_LANGUAGES = "subtitleLanguages";
     public static final String SUBTITLES_ON = "subtitlesOn";
     /** Audio track languages, best first (codes or names). */
@@ -85,6 +87,7 @@ public final class Settings {
         DEFAULTS.put(EXCLUDE, "");
         DEFAULTS.put(PLAY_BUTTON, "auto");
         DEFAULTS.put(AUTOPLAY_NEXT, true);
+        DEFAULTS.put(STILL_WATCHING, 3);
         DEFAULTS.put(SUBTITLE_LANGUAGES, "");
         DEFAULTS.put(SUBTITLES_ON, false);
         DEFAULTS.put(AUDIO_LANGUAGES, "");

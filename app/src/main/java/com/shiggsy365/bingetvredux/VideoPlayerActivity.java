@@ -48,6 +48,8 @@ import java.util.Locale;
  *   Subtitles follow the profile's languages, and are on or off as it says.
  * - Near the end of an episode, Up Next counts down to the next one (OK plays it now, Back
  *   cancels). Back otherwise stops playback.
+ * - After several episodes in a row with no button pressed (the profile's setting), the next
+ *   waits for "Are you still watching?" instead, and the player gives up if nobody answers.
  * - MDBList is told what's playing, if the profile scrobbles.
  */
 @OptIn(markerClass = UnstableApi.class)
@@ -61,6 +63,12 @@ public class VideoPlayerActivity extends Activity {
     // The skip button's fallback, for episodes the databases don't know: a typical intro.
     private static final long SKIP_BY_MS = 85_000;
     // The "Skip intro" chip goes after this long; the OSD's skip button still works.
+    // Nobody answered "Are you still watching?": the player closes.
+    private static final long STILL_WATCHING_GIVE_UP_MS = 5 * 60_000;
+    // Episodes Up Next has started by itself in a row with no button pressed, and whether the
+    // one starting now is one of them.
+    private static int sUnattended;
+    private static boolean sStartedByUpNext;
     private static final long SKIP_CHIP_MS = 12_000;
     // Material "redo" icon (Apache 2.0).
     private static final String SKIP_ICON = "M18.4,10.6C16.55,8.99 14.15,8 11.5,8c-4.65,0 -8.58,3.03 -9.96,7.22L3.9,16c1.05,-3.19 4.05,-5.5 7.6,-5.5 1.95,0 3.73,0.72 5.12,1.88L13,16h9V7l-3.6,3.6z";
@@ -74,6 +82,7 @@ public class VideoPlayerActivity extends Activity {
     private boolean mWaitingForSubtitles;
     private View mUpNext;
     private TextView mUpNextCountdown;
+    private View mStillWatching;
     // The intro, recap and credits, once known (see SkipTimes), and the chip that skips them.
     private List<SkipTimes.Segment> mSegments = Collections.emptyList();
     private View mSkip;
@@ -94,6 +103,10 @@ public class VideoPlayerActivity extends Activity {
     private boolean mLeaving;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final Runnable mStartTimeout = () -> failOver("didn't start");
+    private final Runnable mGiveUp = () -> {
+        Log.i(TAG, "Nobody's still watching: stopping");
+        finish();
+    };
     private final Runnable mTick = new Runnable() {
         @Override
         public void run() {
@@ -118,6 +131,9 @@ public class VideoPlayerActivity extends Activity {
         mPlayerView = findViewById(R.id.player_view);
         mUpNext = findViewById(R.id.up_next);
         mUpNextCountdown = findViewById(R.id.up_next_countdown);
+        mStillWatching = findViewById(R.id.still_watching);
+        if (!sStartedByUpNext) sUnattended = 0;
+        sStartedByUpNext = false;
         mSkip = findViewById(R.id.skip);
         mSkipLabel = findViewById(R.id.skip_label);
         mOsd = new Osd(this, mPlayerView, new Osd.Host() {
@@ -220,6 +236,20 @@ public class VideoPlayerActivity extends Activity {
     public boolean dispatchKeyEvent(KeyEvent event) {
         int key = event.getKeyCode();
         boolean up = event.getAction() == KeyEvent.ACTION_UP;
+        // Someone's there.
+        sUnattended = 0;
+        if (mStillWatching.getVisibility() == View.VISIBLE) {
+            if (key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER) {
+                if (up) playNext();
+                return true;
+            }
+            if (key == KeyEvent.KEYCODE_BACK) {
+                if (up) finish();
+                return true;
+            }
+            // Nothing else to do at the end of the episode.
+            return true;
+        }
         if (mUpNext.getVisibility() == View.VISIBLE) {
             if (key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER) {
                 if (up) playNext();
@@ -435,6 +465,7 @@ public class VideoPlayerActivity extends Activity {
         }
         long duration = mPlayer.getDuration();
         long position = mPlayer.getCurrentPosition();
+        if (mStillWatching.getVisibility() == View.VISIBLE) return;
         updateSkip(position);
         if (mNext == null || mUpNextCancelled || duration == C.TIME_UNSET
                 || duration < UP_NEXT_MIN_DURATION_MS) {
@@ -447,7 +478,8 @@ public class VideoPlayerActivity extends Activity {
         if (left <= Settings.upNextBeforeEndMs(this, duration)
                 || (credits != null && position >= credits.startMs && left > 0)) {
             if (mUpNext.getVisibility() != View.VISIBLE) showUpNext();
-            mUpNextCountdown.setText("Up next  ·  in " + Math.max(0, left / 1000) + " s");
+            mUpNextCountdown.setText(willAsk() ? "Up next  ·  OK to play"
+                    : "Up next  ·  in " + Math.max(0, left / 1000) + " s");
         }
     }
 
@@ -527,14 +559,42 @@ public class VideoPlayerActivity extends Activity {
                 ? mPlayback.meta.background : mNext.thumbnail);
     }
 
-    /** The end: this counts as watched, and the next episode starts if Up Next is on. */
+    /** Whether the next episode waits for "Are you still watching?" rather than starting. */
+    private boolean willAsk() {
+        int limit = Settings.integer(this, Settings.STILL_WATCHING);
+        return limit > 0 && sUnattended + 1 >= limit;
+    }
+
+    /**
+     * The end: this counts as watched, and the next episode starts if Up Next is on (once
+     * someone says they're still watching, after several in a row).
+     */
     private void finished() {
         if (mNext != null && !mUpNextCancelled) {
-            playNext();
+            if (!willAsk()) {
+                sUnattended++;
+                sStartedByUpNext = true;
+                playNext();
+                return;
+            }
+            if (mStillWatching.getVisibility() != View.VISIBLE) askStillWatching();
             return;
         }
         markWatched();
         finish();
+    }
+
+    private void askStillWatching() {
+        if (mPlayer != null) mPlayer.pause();
+        mUpNext.setVisibility(View.GONE);
+        hideSkip(false);
+        mOsd.hide();
+        ((TextView) findViewById(R.id.still_watching_title)).setText(mPlayback.title() + "  ·  "
+                + DetailsActivity.episodeCode(mNext) + (mNext.title.isEmpty() ? "" : "  " + mNext.title));
+        mStillWatching.setVisibility(View.VISIBLE);
+        // The TV can sleep, and the player closes if nobody answers.
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        mHandler.postDelayed(mGiveUp, STILL_WATCHING_GIVE_UP_MS);
     }
 
     private void markWatched() {

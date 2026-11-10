@@ -563,7 +563,9 @@ public final class CatalogRows {
             boolean landscape = "landscape".equals(item.posterShape);
             boolean square = "square".equals(item.posterShape);
             // Channel and station logos.
-            boolean live = item.id.startsWith(HomeRows.LIVE_PREFIX) || item.id.startsWith(Radio.PREFIX);
+            boolean guide = item.id.startsWith(GuideSearch.PREFIX);
+            boolean live = item.id.startsWith(HomeRows.LIVE_PREFIX) || item.id.startsWith(Radio.PREFIX)
+                    || (guide && item.poster.equals(item.logo));
             lp.width = holder.itemView.getResources().getDimensionPixelSize(square ? R.dimen.square_size
                     : landscape ? R.dimen.landscape_width : R.dimen.poster_width);
             lp.height = holder.itemView.getResources().getDimensionPixelSize(square ? R.dimen.square_size
@@ -571,14 +573,19 @@ public final class CatalogRows {
             holder.itemView.setLayoutParams(lp);
             // A channel's name only when it has no logo (it would show through a logo's
             // transparent parts); other titles keep theirs behind the artwork, for when it fails.
-            holder.name.setText(live && !item.poster.isEmpty() ? null : item.name);
+            holder.name.setText(guide || (live && !item.poster.isEmpty()) ? null : item.name);
             // Channel logos are shown whole, with a margin; artwork fills the card.
             holder.image.setScaleType(live ? ImageView.ScaleType.FIT_CENTER : ImageView.ScaleType.CENTER_CROP);
             int pad = live ? Math.round(12 * holder.itemView.getResources().getDisplayMetrics().density) : 0;
             holder.image.setPadding(pad, pad, pad, pad);
             Images.load(holder.image, item.poster);
             Badges.bind(holder.itemView, item);
-            if (item.id.startsWith(Podcasts.EPISODE_PREFIX)) {
+            if (guide) {
+                // A programme: its title, and the channel and when.
+                caption.setVisibility(View.VISIBLE);
+                ((TextView) holder.itemView.findViewById(R.id.card_caption_title)).setText(item.name);
+                ((TextView) holder.itemView.findViewById(R.id.card_caption_age)).setText(item.subtitle);
+            } else if (item.id.startsWith(Podcasts.EPISODE_PREFIX)) {
                 caption.setVisibility(View.VISIBLE);
                 ((TextView) holder.itemView.findViewById(R.id.card_caption_title)).setText(item.name);
                 ((TextView) holder.itemView.findViewById(R.id.card_caption_age)).setText(AudioRows.episodeAge(item));
