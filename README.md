@@ -21,10 +21,11 @@ Stremio addons you add, and the public radio and podcast directories.
 
 | | |
 |---|---|
-| ![Home](screenshots/01-home.jpg)<br>Home, with Continue Watching and the next episode | ![Movies hub](screenshots/02-movies.jpg)<br>Movies hub |
+| ![Home](screenshots/01-home.jpg)<br>Home, with the next episode to watch in Continue Watching | ![Movies hub](screenshots/02-movies.jpg)<br>Movies hub |
 | ![Film info page](screenshots/03-movie-info.jpg)<br>Film info page, with the cast | ![Series info page](screenshots/04-series-info.jpg)<br>Series info page, with its episodes |
 | ![Streams](screenshots/05-streams.jpg)<br>Streams, with badges for quality, HDR and audio | ![TV Shows hub](screenshots/06-tv-hub.jpg)<br>TV Shows hub |
 | ![See all](screenshots/07-see-all.jpg)<br>A whole catalog, with a genre filter | ![TV guide](screenshots/08-guide.jpg)<br>Live TV guide, with catch-up |
+| ![A podcast](screenshots/09-podcast.jpg)<br>A podcast's page | ![Podcasts](screenshots/10-podcasts.jpg)<br>Podcasts, with your subscriptions |
 
 ## Install
 
@@ -46,15 +47,16 @@ updates** (in Settings) checks straight away.
 ## On the TV
 
 - **Home and hubs:** each icon on the menu bar is a hub (Home, Movies, TV Shows and any you make)
-  with a row for each of its catalogs. The focused title's logo, details and artwork fill the top
-  of the screen, and ribbons and progress bars show what's paused or watched. Home can also have
-  Continue Watching (including the next episode of shows you're watching), Next Up, your Watchlist
-  and what's on live TV now.
+  with a row for each of its catalogs, shown one at a time along the bottom of the screen, with
+  dots for where you are among them. The focused title's logo, details and artwork fill the rest,
+  and ribbons and progress bars show what's paused or watched. Home can also have Continue
+  Watching (including the next episode of shows you're watching, once it has aired or airs within
+  the week), Next Up, your Watchlist and what's on live TV now.
 - **See all:** a row's last card opens the whole catalog as a grid, with a genre filter.
-- **Info pages:** all on one screen, with tabs along the bottom for each season's episodes (with
-  what you've watched), the cast (select someone to search for them) and similar titles (with
-  MDBList). Play or Resume, choose a stream, mark watched (with undo), the watchlist and the
-  trailer.
+- **Info pages:** all on one screen. Play or Resume, then buttons to choose a stream, mark
+  watched (with undo), the watchlist, the trailer, the cast (select someone to search for them)
+  and similar titles (with MDBList). A show has tabs for its seasons, with each episode's air date
+  and what you've watched.
 - **Streams:** a list with the best stream for your TV first, with badges for quality, HDR and
   audio, filtered by addon, resolution or cached. The focused one opens up with all its details.
   Streams appear as each addon answers.
@@ -73,17 +75,26 @@ updates** (in Settings) checks straight away.
   Stations keep playing while you browse (back to them from ♪ on the menu bar), and the remote's
   play/pause works on any screen.
 - **Podcasts:** Continue listening, the latest episodes of your podcasts, your subscriptions and
-  Apple's top podcasts. Each podcast's page has Subscribe and its episodes; episodes carry on
-  where you left them.
-- **Live TV:** the guide by channel group, with the same OSD, plus channels, catch-up, Start over
-  and Change stream. A stream whose Xtream account is already in use on another TV is skipped, so
+  Apple's top podcasts. Each podcast's page has Subscribe, Mark listened and its episodes, with
+  the focused one's notes; episodes carry on where you left them, and Menu marks one played.
+- **Live TV:** the guide, with the focused programme's picture behind it and its channel groups
+  along the top, opens on the first channel. The player has the same OSD, plus channels, catch-up,
+  Start over and Change stream. A stream whose Xtream account is already in use on another TV is skipped, so
   nobody gets cut off.
-- **VPN for live TV:** the **VPN** button at the top right of the guide switches a WireGuard VPN
+- **VPN for live TV:** the **VPN** switch at the left of the guide's groups turns a WireGuard VPN
   on or off for live TV. Only the live and catch-up streams go through it; everything else in the
   app, and every other app on the TV, carries on without it. The first time, Android asks you to
   allow the connection. Android runs one VPN at a time, so this disconnects any other VPN app.
 
 ## Setting up (on the web page)
+
+| | |
+|---|---|
+| ![Addons](screenshots/web-01-addons.jpg)<br>Addons | ![Catalogs and hubs](screenshots/web-02-catalogs.jpg)<br>Catalogs and hubs |
+| ![Playback and languages](screenshots/web-03-playback.jpg)<br>A profile's playback settings | ![Profiles](screenshots/web-04-profiles.jpg)<br>Profiles |
+| ![Groups and channels](screenshots/web-05-channels.jpg)<br>Live TV groups and channels | ![Podcasts](screenshots/web-06-podcasts.jpg)<br>Podcasts, with a sync server |
+
+<sub>Addresses, keys and names in these screenshots are placeholders.</sub>
 
 - **Each profile has its own addons and catalogs**, picked at the top of the Addons and Catalogs
   pages. A new profile starts with a copy of the one in use on the TV.
@@ -138,6 +149,9 @@ The live TV side started from Amazon's
 [Fire TV Live TV sample app](https://github.com/amzn/ftv-livetv-sample-tv-app). The code that came
 from it keeps its Apache 2.0 licence and notices (see [LICENSE-APACHE-2.0](LICENSE-APACHE-2.0) and
 [NOTICE](NOTICE)).
+
+The app's text is set in [Figtree](https://github.com/erikdkennedy/figtree), under the SIL Open
+Font License 1.1 (see [Figtree-OFL.txt](app/src/main/assets/licenses/Figtree-OFL.txt)).
 
 Automatic subtitle sync (`SubtitleAlign.java` and `SubtitleSync.java`) is ported from
 [AIOStreams](https://github.com/Viren070/AIOStreams), and those files keep its AGPL-3.0 licence
