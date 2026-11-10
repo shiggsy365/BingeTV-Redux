@@ -78,6 +78,10 @@ updates** (in Settings) checks straight away.
 - **Live TV:** the guide by channel group, with the same OSD, plus channels, catch-up, Start over
   and Change stream. A stream whose Xtream account is already in use on another TV is skipped, so
   nobody gets cut off.
+- **VPN for live TV:** the **VPN** button at the top right of the guide switches a WireGuard VPN
+  on or off for live TV. Only the live and catch-up streams go through it; everything else in the
+  app, and every other app on the TV, carries on without it. The first time, Android asks you to
+  allow the connection. Android runs one VPN at a time, so this disconnects any other VPN app.
 
 ## Setting up (on the web page)
 
@@ -94,7 +98,9 @@ updates** (in Settings) checks straight away.
   whether Play starts the best stream or lists them, Up Next, audio and subtitle languages (best
   first), Home's rows, trailers on Home, live TV on or off, and MDBList.
 - **Live TV** (groups and channels, logos, guides): Xtream accounts, channel groups, merging and
-  order, logos, XMLTV guides and catch-up.
+  order, logos, XMLTV guides and catch-up. Under Accounts, **VPN for live TV** takes a
+  WireGuard config (a `.conf` file) from your VPN provider: Surfshark, Mullvad, Proton,
+  Windscribe and most others offer one under manual or router setup. It isn't in backups.
 - **Radio and Podcasts:** turn them on or off, find stations to add to favourites, subscribe to
   podcasts (by search or feed URL), and set a gPodder-compatible sync server (oPodSync,
   Nextcloud gPodder Sync) and an optional Podcast Index key.
@@ -141,7 +147,8 @@ Automatic subtitle sync (`SubtitleAlign.java` and `SubtitleSync.java`) is ported
 
 Playback uses Media3 ExoPlayer with FFmpeg audio decoders from
 [nextlib](https://github.com/anilbeesetti/nextlib). Images load with Glide, the web page is served
-by NanoHTTPD and QR codes come from ZXing.
+by NanoHTTPD and QR codes come from ZXing. Live TV's VPN uses WireGuard's
+[tunnel library](https://git.zx2c4.com/wireguard-android/) and OkHttp.
 
 **Support the ecosystem:**
 

@@ -126,7 +126,7 @@ $('prefMergeUpConfirm').onchange = e => setPref('skipMergeUpConfirm', !e.target.
 
 function applyState(s) {
   state = s;
-  renderSync(); renderGroups(); renderGuides(); renderSettings(); renderSources();
+  renderSync(); renderGroups(); renderGuides(); renderSettings(); renderSources(); renderVpn();
 }
 function renderSync() {
   const s = state.sync;

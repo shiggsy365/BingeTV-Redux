@@ -59,6 +59,7 @@ public class GuideActivity extends Activity {
     private static final long TICK_MS = 30_000;
     private static final long RELOAD_DEBOUNCE_MS = 500;
     private static final long PREVIEW_DELAY_MS = 1_000;
+    private static final int REQUEST_VPN = 1;
     // Space between the channel column and the programme cells (guide_grid_row.xml).
     private static final int COLUMN_GAP_DP = 3;
 
@@ -74,6 +75,7 @@ public class GuideActivity extends Activity {
     private TextView mHeroDescription;
     private PlayerView mPreview;
     private ImageView mPreviewLogo;
+    private TextView mVpnToggle;
 
     private final RowAdapter mAdapter = new RowAdapter();
     private LinearLayoutManager mLayoutManager;
@@ -114,6 +116,8 @@ public class GuideActivity extends Activity {
         }
     };
 
+    private final Runnable mVpnChanged = this::onVpnChanged;
+    private LiveVpn.Status mVpnShown;
     private final Runnable mReload = this::reload;
     private final Runnable mStartPreview = this::startPreview;
 
@@ -145,6 +149,8 @@ public class GuideActivity extends Activity {
         mPreview = findViewById(R.id.preview);
         mPreview.setUseController(false);
         mPreviewLogo = findViewById(R.id.preview_logo);
+        mVpnToggle = findViewById(R.id.vpn_toggle);
+        mVpnToggle.setOnClickListener(v -> toggleVpn());
 
         mLayoutManager = new LinearLayoutManager(this);
         mGrid.setLayoutManager(mLayoutManager);
@@ -169,6 +175,10 @@ public class GuideActivity extends Activity {
     protected void onResume() {
         super.onResume();
         GuideStore.addListener(mGuideChanged);
+        LiveVpn.addListener(mVpnChanged);
+        LiveVpn.ensure(this);
+        mVpnShown = LiveVpn.status();
+        renderVpn();
         mHandler.post(mTick);
         reload();
     }
@@ -176,6 +186,7 @@ public class GuideActivity extends Activity {
     @Override
     protected void onPause() {
         GuideStore.removeListener(mGuideChanged);
+        LiveVpn.removeListener(mVpnChanged);
         mHandler.removeCallbacksAndMessages(null);
         // The account allows one stream: free it before PlayerActivity starts its own.
         stopPreview();
@@ -328,6 +339,99 @@ public class GuideActivity extends Activity {
         startActivity(intent);
     }
 
+    // ---- VPN ----
+
+    /** Switches live TV's VPN on or off, asking Android's permission the first time. */
+    private void toggleVpn() {
+        if (!LiveVpn.hasConfig(this)) {
+            String url = WebServerService.pageUrl();
+            Toast.makeText(this, "Add a WireGuard config under Live TV accounts at "
+                    + (url != null ? url : "the web manager"), Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (LiveVpn.isEnabled(this) && LiveVpn.status() != LiveVpn.Status.FAILED) {
+            setVpn(false);
+            return;
+        }
+        Intent consent = LiveVpn.permissionIntent(this);
+        if (consent == null) {
+            setVpn(true);
+            return;
+        }
+        try {
+            startActivityForResult(consent, REQUEST_VPN);
+        } catch (android.content.ActivityNotFoundException e) {
+            Toast.makeText(this, "This device doesn't allow VPNs", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_VPN) return;
+        if (resultCode == RESULT_OK) {
+            setVpn(true);
+        } else {
+            Toast.makeText(this, "The VPN wasn't allowed", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void setVpn(boolean on) {
+        // The preview restarts so its stream goes the new way.
+        stopPreview();
+        LiveVpn.setEnabled(this, on);
+        mVpnShown = LiveVpn.status();
+        renderVpn();
+        schedulePreview();
+    }
+
+    private void onVpnChanged() {
+        LiveVpn.Status status = LiveVpn.status();
+        if (status == mVpnShown) return;
+        mVpnShown = status;
+        if (status == LiveVpn.Status.FAILED && LiveVpn.isEnabled(this)) {
+            String error = LiveVpn.error();
+            Toast.makeText(this, "VPN: " + (error != null ? error : "couldn't connect"),
+                    Toast.LENGTH_LONG).show();
+        }
+        renderVpn();
+        if (status == LiveVpn.Status.ON) schedulePreview();
+    }
+
+    /** The switch at the top right: hidden until a config is saved on the web page. */
+    private void renderVpn() {
+        if (!LiveVpn.hasConfig(this)) {
+            mVpnToggle.setVisibility(View.GONE);
+            return;
+        }
+        mVpnToggle.setVisibility(View.VISIBLE);
+        String label;
+        int dot;
+        if (!LiveVpn.isEnabled(this)) {
+            label = "VPN off";
+            dot = 0xFF9E9E9E;
+        } else {
+            switch (LiveVpn.status()) {
+                case ON:
+                    label = "VPN on";
+                    dot = 0xFF43A047;
+                    break;
+                case FAILED:
+                    label = "VPN failed";
+                    dot = 0xFFE53935;
+                    break;
+                default:
+                    label = "VPN connecting…";
+                    dot = 0xFFFFB300;
+                    break;
+            }
+        }
+        android.text.SpannableString text = new android.text.SpannableString("● " + label);
+        text.setSpan(new android.text.style.ForegroundColorSpan(dot), 0, 1,
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        mVpnToggle.setText(text);
+    }
+
     // ---- Chips ----
 
     private void buildChips() {
@@ -374,7 +478,8 @@ public class GuideActivity extends Activity {
         mAdapter.notifyDataSetChanged();
         if (chipsFocused) {
             mGridMode = false;
-            mSelectedChip.requestFocus();
+            // A reload leaves the VPN switch focused if it was.
+            if (!mVpnToggle.isFocused()) mSelectedChip.requestFocus();
         } else {
             mGrid.requestFocus();
         }
@@ -536,7 +641,10 @@ public class GuideActivity extends Activity {
         // A preview mustn't take an account's only connection from another TV either.
         int source = Sources.sourceOf(streamId);
         mExecutor.execute(() -> {
-            boolean busy = Connections.busy(getApplicationContext(), source);
+            // With live TV's VPN switched on, no preview until it's connected (it starts
+            // then: see onVpnChanged).
+            boolean busy = !LiveVpn.isReady(getApplicationContext())
+                    || Connections.busy(getApplicationContext(), source);
             runOnUiThread(() -> {
                 if (busy || isFinishing() || mPreviewChannelId != channelId
                         || mPreviewPlayer != null) {
@@ -550,7 +658,7 @@ public class GuideActivity extends Activity {
     private void playPreview(String url, int source) {
         mPreviewSource = source;
         Connections.using(source);
-        mPreviewPlayer = Players.build(this);
+        mPreviewPlayer = Players.live(this);
         mFrameRate = FrameRateMatcher.attach(this, mPreviewPlayer, FrameRateMatcher.LIVE);
         mPreview.setPlayer(mPreviewPlayer);
         mPreviewPlayer.addListener(new Player.Listener() {

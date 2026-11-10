@@ -64,6 +64,35 @@ $('saveSettings').onclick = () => run(async () => {
   if (selectedGroup) selectGroup(selectedGroup);
 });
 
+function renderVpn() {
+  const v = state.vpn;
+  if (!v) return;
+  const status = !v.hasConfig ? 'No config saved.'
+      : `Config saved for ${v.endpoint || 'your VPN server'}. ` + (!v.enabled ? 'Switched off on the TV.'
+      : v.status === 'on' ? 'Connected.' : v.status === 'failed' ? 'Couldn\'t connect: ' + (v.error || 'unknown error')
+      : 'Connecting…');
+  $('vpnStatus').textContent = status;
+  $('vpnStatus').className = v.status === 'failed' && v.enabled ? '' : 'muted';
+  $('vpnDelete').hidden = !v.hasConfig;
+  $('vpnSave').textContent = v.hasConfig ? 'Replace VPN config' : 'Save VPN config';
+}
+$('vpnFile').onchange = () => {
+  const file = $('vpnFile').files[0];
+  if (!file) return;
+  file.text().then(text => { $('vpnConfig').value = text; });
+};
+$('vpnSave').onclick = () => run(async () => {
+  const config = $('vpnConfig').value.trim();
+  if (!config) { toast('Choose a .conf file or paste the config first'); return; }
+  applyState(await api('/api/vpn', {config}));
+  $('vpnConfig').value = ''; $('vpnFile').value = '';
+  toast('VPN config saved. Switch it on from the TV guide.');
+});
+$('vpnDelete').onclick = () => {
+  if (!confirm('Remove the VPN config? Live TV goes back to playing without the VPN.')) return;
+  run(async () => { applyState(await api('/api/vpn/delete', {})); toast('VPN config removed'); });
+};
+
 $('downloadBackup').onclick = () => {
   // A plain navigation lets the browser save the zip under the server's filename.
   window.location.href = '/api/backup?password=' + ($('backupPassword').checked ? '1' : '0');

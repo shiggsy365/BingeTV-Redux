@@ -3,6 +3,10 @@
 -keep class io.github.anilbeesetti.nextlib.** { *; }
 -keep class androidx.media3.decoder.** { *; }
 
+# WireGuard's Go library is reached through JNI by class and method name.
+-keep class com.wireguard.android.backend.GoBackend { *; }
+-keep class com.wireguard.android.backend.GoBackend$* { *; }
+
 # Stack traces in logcat stay readable.
 -keepattributes SourceFile,LineNumberTable
 -dontobfuscate

@@ -6,6 +6,7 @@ import android.os.Handler;
 import androidx.annotation.OptIn;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.util.UnstableApi;
+import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.DefaultLoadControl;
@@ -51,13 +52,29 @@ public final class Players {
 
     /** A player whose HTTP requests carry {@code headers} (for streams that need them). */
     public static ExoPlayer build(Context context, Map<String, String> headers) {
+        DefaultHttpDataSource.Factory http = http();
+        if (headers != null && !headers.isEmpty()) http.setDefaultRequestProperties(headers);
+        return create(context, http);
+    }
+
+    /**
+     * A player for live TV and catch-up: its streams go through live TV's VPN when that's
+     * switched on (see LiveHttp), and only its streams.
+     */
+    public static ExoPlayer live(Context context) {
+        return create(context, new LiveHttp(context, http()));
+    }
+
+    private static DefaultHttpDataSource.Factory http() {
         // Panels and debrid services often redirect to another server, sometimes across
         // http/https.
-        DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
+        return new DefaultHttpDataSource.Factory()
                 .setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(15_000)
                 .setReadTimeoutMs(20_000);
-        if (headers != null && !headers.isEmpty()) http.setDefaultRequestProperties(headers);
+    }
+
+    private static ExoPlayer create(Context context, DataSource.Factory http) {
         // ExoPlayer's own limit for video and audio (141 MB) leaves 4K streams next to nothing
         // of the Stick's 192 MB Java heap.
         return new ExoPlayer.Builder(context, new RenderersFactory(context))

@@ -36,6 +36,8 @@ import fi.iki.elonen.NanoHTTPD;
  *   POST /api/sources                     {name, server, username, password, useHls}
  *   POST /api/sources/update              {index, name?, server?, username?, password?, useHls?}
  *   POST /api/sources/delete              {index}
+ *   POST /api/vpn                         {config} — live TV's WireGuard config (.conf text)
+ *   POST /api/vpn/delete                  removes it, switching the VPN off
  *   POST /api/groups                      {categoryId,name} or {name} for a custom group
  *   POST /api/groups/update               {id, name?, enabled?, move?: -1|1}
  *   POST /api/groups/delete               {id}
