@@ -5,6 +5,7 @@ import android.app.Dialog;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.SystemClock;
 import android.os.Looper;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -28,6 +29,7 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import androidx.media3.ui.PlayerView;
 
+import com.shiggsy365.bingetvredux.stremio.MetaItem;
 import com.shiggsy365.bingetvredux.stremio.Stream;
 import com.shiggsy365.bingetvredux.stremio.StreamInfo;
 import com.shiggsy365.bingetvredux.stremio.Streams;
@@ -58,6 +60,8 @@ public class VideoPlayerActivity extends Activity {
     // A debrid link can take a while to start, but not this long.
     private static final long START_TIMEOUT_MS = 45_000;
     private static final long SAVE_EVERY_MS = 15_000;
+    // How long a stream must have played for its download speed to count (see StreamPick).
+    private static final long CONNECTION_SAMPLE_MS = 60_000;
     // Short videos (extras, specials) don't get Up Next.
     private static final long UP_NEXT_MIN_DURATION_MS = 10 * 60_000;
     // The skip button's fallback, for episodes the databases don't know: a typical intro.
@@ -97,6 +101,8 @@ public class VideoPlayerActivity extends Activity {
     private Playback mPlayback;
     private int mIndex;
     private boolean mStarted;
+    // When it started playing (elapsed realtime): a few seconds' downloading says little about the connection.
+    private long mStartedAt;
     private long mResumePosition;
     private Video mNext;
     private boolean mUpNextCancelled;
@@ -129,6 +135,12 @@ public class VideoPlayerActivity extends Activity {
             return;
         }
         mPlayerView = findViewById(R.id.player_view);
+        // The artwork finding the streams showed, there at once (Glide has it), until it plays.
+        MetaItem meta = mPlayback.meta;
+        Images.load(findViewById(R.id.loading_backdrop), meta.background.isEmpty() ? meta.poster : meta.background);
+        TextView loadingTitle = findViewById(R.id.loading_title);
+        loadingTitle.setText(mPlayback.title());
+        Images.logo(findViewById(R.id.loading_logo), loadingTitle, meta.logo, false);
         mUpNext = findViewById(R.id.up_next);
         mUpNextCountdown = findViewById(R.id.up_next_countdown);
         mStillWatching = findViewById(R.id.still_watching);
@@ -293,8 +305,9 @@ public class VideoPlayerActivity extends Activity {
                 + String.join(" ", Streams.tags(stream)));
         mPlayer = Players.build(this, stream.headers);
         // Plays once the TV is in the video's mode, rather than switching a second into it.
-        mFrameRate = FrameRateMatcher.attachBeforePlay(this, mPlayer,
-                findViewById(R.id.frame_rate_cover));
+        View loading = findViewById(R.id.loading);
+        loading.setVisibility(View.VISIBLE);
+        mFrameRate = FrameRateMatcher.attachBeforePlay(this, mPlayer, loading);
         mPlayer.setTrackSelectionParameters(trackPrefs(mPlayer.getTrackSelectionParameters()));
         mSubtitles.setStream(stream);
         mSubtitles.attach(mPlayer);
@@ -304,6 +317,7 @@ public class VideoPlayerActivity extends Activity {
             public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY && !mStarted) {
                     mStarted = true;
+                    mStartedAt = SystemClock.elapsedRealtime();
                     mHandler.removeCallbacks(mStartTimeout);
                     WatchStore.get(VideoPlayerActivity.this).touch(mPlayback.entry(current()));
                     Mdblist.scrobble(VideoPlayerActivity.this, Mdblist.START,
@@ -423,7 +437,7 @@ public class VideoPlayerActivity extends Activity {
 
     private void release() {
         // What this playback measured decides which stream suits the connection next time.
-        if (mPlayer != null && mStarted) {
+        if (mPlayer != null && mStarted && SystemClock.elapsedRealtime() - mStartedAt >= CONNECTION_SAMPLE_MS) {
             StreamPick.saveConnection(this, DefaultBandwidthMeter.getSingletonInstance(this).getBitrateEstimate());
         }
         mHandler.removeCallbacks(mStartTimeout);

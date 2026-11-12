@@ -15,33 +15,71 @@ public class StreamPickTest {
 
     private static final List<StreamPick.Candidate> FILM = Arrays.asList(c(27, 2160), c(17, 1080), c(2.5, 1080));
 
+    private static StreamPick.Candidate c(double mbps, int height, int language) {
+        return new StreamPick.Candidate(mbps, height, true, language);
+    }
+
+    private static final int IN = StreamPick.IN_LANGUAGE, ALSO = StreamPick.ALSO_OTHER_LANGUAGES,
+            OTHER = StreamPick.OTHER_LANGUAGE;
+    private static final List<String> ENGLISH = Arrays.asList("eng");
+
     @Test
     public void prefersTheProfilesLanguage() {
-        assertEquals(1, StreamPick.best(Arrays.asList(
-                new StreamPick.Candidate(7.3, 1080, true, false), new StreamPick.Candidate(7, 1080, true, true)), 100));
+        assertEquals(1, StreamPick.best(Arrays.asList(c(7.3, 1080, OTHER), c(7, 1080, IN)), 100));
     }
 
     @Test
     public void anotherLanguageIsBetterThanNothing() {
         assertEquals(1, StreamPick.best(Arrays.asList(
-                new StreamPick.Candidate(7.3, 1080, false, true), new StreamPick.Candidate(7, 1080, true, false)), 100));
+                new StreamPick.Candidate(7.3, 1080, false, IN), c(7, 1080, OTHER)), 100));
+    }
+
+    @Test
+    public void onlyTheProfilesLanguageBeforeReleasesWithOthers() {
+        // "2xRus.Ukr.Eng": English is in there, but Russian may well be what plays.
+        assertEquals(1, StreamPick.best(Arrays.asList(c(7, 2160, ALSO), c(7, 2160, IN)), 100));
+        assertEquals(0, StreamPick.best(Arrays.asList(c(7, 2160, ALSO), c(7, 1080, OTHER)), 100));
+    }
+
+    @Test
+    public void theLanguageComesBeforeTheConnection() {
+        // The connection measured is a guess; a stream in Russian is no use however well it'd play.
+        assertEquals(1, StreamPick.best(Arrays.asList(c(7, 1080, OTHER), c(20, 2160, IN)), 10));
+        assertEquals(1, StreamPick.best(Arrays.asList(c(20, 2160, IN), c(6, 1080, IN), c(5, 1080, OTHER)), 10));
     }
 
     @Test
     public void readsLanguagesFromTheFileName() {
-        List<String> english = Arrays.asList("eng");
-        assertEquals(false, StreamPick.inLanguage("", "Black.Doves.s02e01.HD1080p.WEBRip.Rus.RuDub.tv.mkv", english));
-        assertEquals(true, StreamPick.inLanguage("", "Black Doves S02E01 1080p NF WEB-DL DDP5 1 Atmos H 264-FLUX.mkv", english));
-        assertEquals(true, StreamPick.inLanguage("", "The.Italian.Job.2003.1080p.BluRay.x264.mkv", english));
-        assertEquals(true, StreamPick.inLanguage("", "Film.2020.1080p.Rus.Eng.mkv", english));
-        assertEquals(true, StreamPick.inLanguage("", "Film.2020.1080p.MULTI.mkv", english));
+        assertEquals(OTHER, StreamPick.language("", "Black.Doves.s02e01.HD1080p.WEBRip.Rus.RuDub.tv.mkv", ENGLISH));
+        assertEquals(IN, StreamPick.language("", "Black Doves S02E01 1080p NF WEB-DL DDP5 1 Atmos H 264-FLUX.mkv", ENGLISH));
+        assertEquals(IN, StreamPick.language("", "The.Italian.Job.2003.1080p.BluRay.x264.mkv", ENGLISH));
+        assertEquals(ALSO, StreamPick.language("", "Film.2020.1080p.Rus.Eng.mkv", ENGLISH));
+        assertEquals(ALSO, StreamPick.language("", "Film.2020.1080p.MULTI.mkv", ENGLISH));
+        assertEquals(ALSO, StreamPick.language("", "Interstellar.2014.1080p.WEB-DL.2xRus.Ukr.Eng.HDCLUB.mkv", ENGLISH));
+        assertEquals(OTHER, StreamPick.language("", "Film.2020.1080p.WEB-DL.MVO.mkv", ENGLISH));
+        assertEquals(OTHER, StreamPick.language("", "Интерстеллар.2014.1080p.mkv", ENGLISH));
     }
 
     @Test
     public void anAddonsLanguageListWins() {
-        List<String> english = Arrays.asList("eng");
-        assertEquals(true, StreamPick.inLanguage("EN · FR", "Film.2020.Rus.mkv", english));
-        assertEquals(false, StreamPick.inLanguage("RU", "Film.2020.1080p.mkv", english));
+        assertEquals(ALSO, StreamPick.language("EN · FR", "Film.2020.Rus.mkv", ENGLISH));
+        assertEquals(OTHER, StreamPick.language("RU", "Film.2020.1080p.mkv", ENGLISH));
+        assertEquals(IN, StreamPick.language("en", "Film.2020.1080p.mkv", ENGLISH));
+        // Listed with English, but the file says Russian too.
+        assertEquals(ALSO, StreamPick.language("en · sub", "Film.2020.1080p.2xRus.Eng.mkv", ENGLISH));
+    }
+
+    @Test
+    public void subtitlesArentALanguageList() {
+        // "sub" alone: the addon says nothing of the audio, so the file name decides.
+        assertEquals(IN, StreamPick.language("sub", "Film (2020) {imdb-tt1} [WEBDL-2160p][AAC 5.1].mkv", ENGLISH));
+        assertEquals(OTHER, StreamPick.language("sub", "Film.2020.PL.iNTERNAL.2160p.WEBRip.mkv", ENGLISH));
+    }
+
+    @Test
+    public void oneMeasurementDoesntDecideTheConnection() {
+        assertEquals(40, StreamPick.averaged(0, 40), 1e-9);
+        assertEquals(25, StreamPick.averaged(40, 10), 1e-9);
     }
 
     @Test

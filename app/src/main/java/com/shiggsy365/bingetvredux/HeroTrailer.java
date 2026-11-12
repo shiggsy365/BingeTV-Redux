@@ -1,8 +1,12 @@
 package com.shiggsy365.bingetvredux;
 
 import android.app.Activity;
+import android.graphics.Bitmap;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
+import android.util.Log;
+import android.view.TextureView;
 import android.view.View;
 
 import androidx.media3.common.Player;
@@ -17,10 +21,23 @@ import com.shiggsy365.bingetvredux.stremio.Metas;
  * Home's trailers: when focus rests on a title for a few seconds (the profile's setting), its
  * YouTube trailer plays in a window at the top right, with or without sound, fading in over the
  * title's artwork and blending into it at the edges (see EdgeFadeFrame). Moving on stops it. A title whose catalog entry doesn't name a trailer is looked up in full
- * first.
+ * first. Black bars in its picture (see Letterbox) are found in its first frames, before it's
+ * seen, and left out.
  */
 final class HeroTrailer {
+    private static final String TAG = "HeroTrailer";
     private static final int MAX_HEIGHT = 720;
+    // Frames looked at for black bars: this often, this small.
+    private static final long SAMPLE_EVERY_MS = 250;
+    private static final int SAMPLE_WIDTH = 160, SAMPLE_HEIGHT = 90;
+    // Shown once this many frames agree on the bars, or this long after its first frame
+    // (trailers open on dark logos), as it is then.
+    private static final int SAMPLES_AGREED = 3;
+    private static final long SHOW_BY_MS = 2_500;
+    // Looked at for this long in all: a brighter frame may show the bars are narrower.
+    private static final long SAMPLE_FOR_MS = 15_000;
+    // A little more than the bars, for their soft edge.
+    private static final float CROP_MARGIN = 0.005f;
 
     private final Activity mActivity;
     private final PlayerView mView;
@@ -32,6 +49,13 @@ final class HeroTrailer {
     private MetaItem mItem;
     // Which title is current, so a slow lookup for an earlier one is dropped.
     private int mGeneration;
+    // The narrowest bars seen so far in its frames, and how many frames have said.
+    private float mBarTop, mBarBottom;
+    private int mSamples;
+    private long mFirstFrameAt;
+    private boolean mShown;
+    private Bitmap mSample;
+    private int[] mPixels;
 
     HeroTrailer(Activity activity, PlayerView view, View... artwork) {
         mActivity = activity;
@@ -78,8 +102,9 @@ final class HeroTrailer {
         mPlayer.addListener(new Player.Listener() {
             @Override
             public void onRenderedFirstFrame() {
-                for (View v : mArtwork) v.animate().alpha(0f).setDuration(400).start();
-                mView.animate().alpha(1f).setStartDelay(400).setDuration(500).start();
+                if (mFirstFrameAt > 0) return;
+                mFirstFrameAt = SystemClock.elapsedRealtime();
+                sample();
             }
 
             @Override
@@ -92,8 +117,58 @@ final class HeroTrailer {
         mPlayer.prepare();
     }
 
+    /** Looks at the frame showing for black bars; shows the trailer once they're known. */
+    private void sample() {
+        if (mPlayer == null) return;
+        if (mView.getVideoSurfaceView() instanceof TextureView) {
+            TextureView texture = (TextureView) mView.getVideoSurfaceView();
+            if (mSample == null) {
+                mSample = Bitmap.createBitmap(SAMPLE_WIDTH, SAMPLE_HEIGHT, Bitmap.Config.ARGB_8888);
+                mPixels = new int[SAMPLE_WIDTH * SAMPLE_HEIGHT];
+            }
+            float[] bars = texture.isAvailable() ? Letterbox.bars(pixels(texture), SAMPLE_WIDTH, SAMPLE_HEIGHT) : null;
+            // Only when the video fills the window: one of another shape has no bars burned in.
+            if (bars != null && Math.abs(texture.getHeight() - mView.getHeight()) <= mView.getHeight() / 50) {
+                mBarTop = mSamples == 0 ? bars[0] : Math.min(mBarTop, bars[0]);
+                mBarBottom = mSamples == 0 ? bars[1] : Math.min(mBarBottom, bars[1]);
+                mSamples++;
+                if (mShown) crop();
+            }
+        }
+        long since = SystemClock.elapsedRealtime() - mFirstFrameAt;
+        if (!mShown && (mSamples >= SAMPLES_AGREED || since >= SHOW_BY_MS)) reveal();
+        if (since < SAMPLE_FOR_MS) mHandler.postDelayed(this::sample, SAMPLE_EVERY_MS);
+    }
+
+    private int[] pixels(TextureView texture) {
+        texture.getBitmap(mSample);
+        mSample.getPixels(mPixels, 0, SAMPLE_WIDTH, 0, 0, SAMPLE_WIDTH, SAMPLE_HEIGHT);
+        return mPixels;
+    }
+
+    private void crop() {
+        if (!(mView.getParent() instanceof EdgeFadeFrame)) return;
+        float top = mSamples == 0 || mBarTop <= 0 ? 0 : mBarTop + CROP_MARGIN;
+        float bottom = mSamples == 0 || mBarBottom <= 0 ? 0 : mBarBottom + CROP_MARGIN;
+        if (((EdgeFadeFrame) mView.getParent()).setCrop(top, bottom)) {
+            Log.i(TAG, String.format(java.util.Locale.ROOT, "Black bars: %.3f top, %.3f bottom (%d frames)",
+                    top, bottom, mSamples));
+        }
+    }
+
+    private void reveal() {
+        mShown = true;
+        crop();
+        for (View v : mArtwork) v.animate().alpha(0f).setDuration(400).start();
+        mView.animate().alpha(1f).setStartDelay(400).setDuration(500).start();
+    }
+
     void stop() {
         mGeneration++;
+        mFirstFrameAt = 0;
+        mSamples = 0;
+        mShown = false;
+        if (mView.getParent() instanceof EdgeFadeFrame) ((EdgeFadeFrame) mView.getParent()).setCrop(0, 0);
         mHandler.removeCallbacksAndMessages(null);
         mView.animate().cancel();
         mView.setAlpha(0f);

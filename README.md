@@ -57,7 +57,8 @@ updates** (in Settings) checks straight away.
   watched (with undo), the watchlist, the trailer, the cast (select someone to search for them)
   and similar titles (with MDBList). A show has tabs for its seasons, with each episode's air date
   and what you've watched.
-- **Streams:** a list with the best stream for your TV first, with badges for quality, HDR and
+- **Streams:** a list with the best stream for your TV first (in your profile's audio language,
+  then the best quality your screen and connection can manage), with badges for quality, HDR and
   audio, filtered by addon, resolution or cached. The focused one opens up with all its details.
   Streams appear as each addon answers.
 - **Player:** the OSD has the title, times, progress (Up to seek, Left/Right to skip) and buttons

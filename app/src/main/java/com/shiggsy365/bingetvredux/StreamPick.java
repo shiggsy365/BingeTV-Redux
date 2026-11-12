@@ -17,7 +17,9 @@ import java.util.regex.Pattern;
 
 /**
  * Which streams suit this TV: none above the highest output mode it offers, and first the first
- * in the profile's order that the connection can keep up with, as the player measured last time.
+ * in the profile's order in the profile's language that the connection can keep up with, as the
+ * player has measured it. The language comes before the connection: a stream that stutters can
+ * be swapped, one in Russian is no use at all.
  */
 final class StreamPick {
     private static final String PREFS = "stream_pick";
@@ -25,16 +27,25 @@ final class StreamPick {
     // The connection needs room to spare, for a stream's busier scenes.
     private static final double HEADROOM = 0.8;
     private static final Pattern BITRATE = Pattern.compile("([0-9.]+)\\s*([KMG])bps", Pattern.CASE_INSENSITIVE);
+    // Speeds measured are averaged with what was known, so one slow evening doesn't decide.
+    private static final double NEW_SAMPLE_WEIGHT = 0.5;
+    private static final Pattern CYRILLIC = Pattern.compile("[\\u0400-\\u04ff]");
+    // "2xRus", "3xUkr": that many tracks in that language.
+    private static final Pattern TRACK_COUNT = Pattern.compile("^\\d+x");
+    /** How well a stream's languages suit the profile. */
+    static final int OTHER_LANGUAGE = 0, ALSO_OTHER_LANGUAGES = 1, IN_LANGUAGE = 2;
     private static final Pattern AFTER_TITLE = Pattern.compile(
             "(?:^|[^0-9a-z])(?:(?:19|20)\\d\\d|s\\d{1,2}[ ._-]?e\\d{1,3})(?=[^0-9a-z]|$)", Pattern.CASE_INSENSITIVE);
     /** Language tags seen in release names, as ISO 639-2 codes. */
     private static final Map<String, String> LANGUAGE_TAGS = new HashMap<>();
     static {
         tags("eng", "eng", "english");
-        tags("rus", "rus", "russian", "rudub");
+        // With the Russian dubbing studios' names, which stand in for a language tag.
+        tags("rus", "rus", "russian", "rudub", "mvo", "dvo", "avo", "lostfilm", "hdrezka",
+                "newstudio", "baibako", "coldfilm", "jaskier");
         tags("ita", "ita", "italian");
         tags("deu", "ger", "deu", "german");
-        tags("fra", "fre", "fra", "french", "vff");
+        tags("fra", "fre", "fra", "french", "truefrench", "vff", "vf2", "vfi", "vfq");
         tags("spa", "spa", "esp", "spanish", "latino", "castellano");
         tags("hin", "hin", "hindi");
         tags("tam", "tam", "tamil");
@@ -43,7 +54,7 @@ final class StreamPick {
         tags("jpn", "jpn", "jap", "japanese");
         tags("zho", "chi", "zho", "chinese", "mandarin");
         tags("por", "por", "portuguese", "dublado");
-        tags("pol", "pol", "polish", "lektor");
+        tags("pol", "pol", "pl", "polish", "lektor");
         tags("tur", "tur", "turkish");
         tags("ukr", "ukr", "ukrainian");
         tags("ara", "ara", "arabic");
@@ -58,13 +69,14 @@ final class StreamPick {
         final double mbps;
         final int height;
         final boolean ready;
-        final boolean language;
+        /** {@link #IN_LANGUAGE}, {@link #ALSO_OTHER_LANGUAGES} or {@link #OTHER_LANGUAGE}. */
+        final int language;
 
         Candidate(double mbps, int height, boolean ready) {
-            this(mbps, height, ready, true);
+            this(mbps, height, ready, IN_LANGUAGE);
         }
 
-        Candidate(double mbps, int height, boolean ready, boolean language) {
+        Candidate(double mbps, int height, boolean ready, int language) {
             this.mbps = mbps;
             this.height = height;
             this.ready = ready;
@@ -98,43 +110,61 @@ final class StreamPick {
     }
 
     /**
-     * The first that fits, by position, in the right language if any is; 0 when none fits. A
-     * connection of 0 isn't applied.
+     * The first, by position, that's only in the profile's language and fits the connection; else
+     * one that also has others (their dub may be what plays); else either kind, connection or
+     * not; only then another language. 0 when nothing's ready. A connection of 0 isn't applied.
      */
     static int best(List<Candidate> candidates, double connectionMbps) {
-        int fits = -1;
-        for (int i = 0; i < candidates.size(); i++) {
-            Candidate c = candidates.get(i);
-            if (!c.ready) continue;
-            if (connectionMbps > 0 && c.mbps > connectionMbps * HEADROOM) continue;
-            if (c.language) return i;
-            if (fits < 0) fits = i;
+        // Each step: the languages it takes, and whether it must fit the connection.
+        int[][] steps = {{IN_LANGUAGE, 1}, {ALSO_OTHER_LANGUAGES, 1}, {IN_LANGUAGE, 0},
+                {ALSO_OTHER_LANGUAGES, 0}, {OTHER_LANGUAGE, 1}, {OTHER_LANGUAGE, 0}};
+        for (int[] step : steps) {
+            for (int i = 0; i < candidates.size(); i++) {
+                Candidate c = candidates.get(i);
+                if (!c.ready || c.language != step[0]) continue;
+                if (step[1] == 1 && connectionMbps > 0 && c.mbps > connectionMbps * HEADROOM) continue;
+                return i;
+            }
         }
-        return Math.max(fits, 0);
+        return 0;
     }
 
     /**
-     * False only when a stream says it's in other languages: its addon's list, or else the tags
-     * after the year or episode in its file name (so "The.Italian.Job.2003" isn't Italian).
+     * How well a stream's languages suit: its addon's list (less "sub", which is subtitles), and
+     * the tags after the year or episode in its file name (so "The.Italian.Job.2003" isn't
+     * Italian). Nothing said counts as the profile's language; a file name in Cyrillic, as
+     * Russian.
      */
-    static boolean inLanguage(String languages, String filename, List<String> wanted) {
-        if (languages != null && !languages.isEmpty()) {
-            for (String language : Settings.languages(languages.replace('·', ','))) {
-                if (wanted.contains(language)) return true;
+    static int language(String languages, String filename, List<String> wanted) {
+        String file = filename == null ? "" : filename;
+        boolean want = false, other = false, multi = false;
+        Matcher title = AFTER_TITLE.matcher(file);
+        if (title.find()) {
+            for (String tag : file.substring(title.end()).toLowerCase(Locale.ROOT).split("[^a-z0-9]+")) {
+                tag = TRACK_COUNT.matcher(tag).replaceFirst("");
+                if (tag.equals("multi") || tag.equals("dual")) multi = true;
+                String language = LANGUAGE_TAGS.get(tag);
+                if (language == null) continue;
+                if (wanted.contains(language)) want = true;
+                else other = true;
             }
-            return false;
         }
-        Matcher title = AFTER_TITLE.matcher(filename == null ? "" : filename);
-        if (!title.find()) return true;
-        boolean tagged = false;
-        for (String tag : filename.substring(title.end()).toLowerCase(Locale.ROOT).split("[^a-z0-9]+")) {
-            if (tag.equals("multi") || tag.equals("dual")) return true;
-            String language = LANGUAGE_TAGS.get(tag);
-            if (language == null) continue;
-            if (wanted.contains(language)) return true;
-            tagged = true;
+        if (CYRILLIC.matcher(file).find() && !wanted.contains("rus")) other = true;
+        List<String> listed = new ArrayList<>();
+        for (String part : (languages == null ? "" : languages).replaceAll("(?i)\\bsub\\b.*", "").split("[·,]")) {
+            if (!part.trim().isEmpty()) listed.add(part.trim());
         }
-        return !tagged;
+        if (!listed.isEmpty()) {
+            boolean listedWanted = false;
+            for (String language : Settings.languages(String.join(",", listed))) {
+                if (wanted.contains(language)) listedWanted = true;
+                else other = true;
+            }
+            if (!listedWanted) return OTHER_LANGUAGE;
+            want = true;
+        }
+        if (other && !want && !multi) return OTHER_LANGUAGE;
+        return other || multi ? ALSO_OTHER_LANGUAGES : IN_LANGUAGE;
     }
 
     static double mbps(String bitrate) {
@@ -168,7 +198,7 @@ final class StreamPick {
             StreamInfo info = StreamInfo.of(s);
             candidates.add(new Candidate(mbps(info.bitrate), height(info.resolution),
                     !info.p2p && (info.debrid.isEmpty() || info.cached),
-                    inLanguage(info.languages, info.filename, wanted)));
+                    language(info.languages, info.filename, wanted)));
         }
         int best = best(candidates, connectionMbps(context));
         if (best == 0) return streams;
@@ -183,8 +213,14 @@ final class StreamPick {
 
     static void saveConnection(Context context, long bitsPerSecond) {
         if (bitsPerSecond <= 0) return;
+        double known = connectionMbps(context);
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putFloat(CONNECTION_MBPS, bitsPerSecond / 1_000_000f).apply();
+                .putFloat(CONNECTION_MBPS, (float) averaged(known, bitsPerSecond / 1_000_000d)).apply();
+    }
+
+    /** The connection known, with a new measurement taken into account. */
+    static double averaged(double known, double measured) {
+        return known <= 0 ? measured : known + (measured - known) * NEW_SAMPLE_WEIGHT;
     }
 
     /** The highest of the display's output modes; 0 when it doesn't say. */

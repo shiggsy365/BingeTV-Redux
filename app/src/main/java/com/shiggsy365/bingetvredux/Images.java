@@ -57,6 +57,11 @@ public final class Images {
 
     /** A title's logo, fading in; with no logo, or one that won't load, {@code name} shows instead. */
     public static void logo(ImageView logo, TextView name, String url) {
+        logo(logo, name, url, true);
+    }
+
+    /** The same, without the fade when {@code fade} is false (it's there already, as it was). */
+    public static void logo(ImageView logo, TextView name, String url, boolean fade) {
         boolean hasLogo = url != null && !url.isEmpty();
         name.setVisibility(hasLogo ? View.GONE : View.VISIBLE);
         logo.setVisibility(hasLogo ? View.VISIBLE : View.GONE);
@@ -65,7 +70,8 @@ public final class Images {
             logo.setImageDrawable(null);
             return;
         }
-        Glide.with(logo).load(url).transition(DrawableTransitionOptions.withCrossFade(250))
+        Glide.with(logo).load(url).transition(fade ? DrawableTransitionOptions.withCrossFade(250)
+                : DrawableTransitionOptions.with(com.bumptech.glide.request.transition.NoTransition.getFactory()))
                 .listener(new RequestListener<Drawable>() {
                     @Override
                     public boolean onLoadFailed(GlideException e, Object model, Target<Drawable> target,

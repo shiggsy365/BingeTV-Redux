@@ -178,6 +178,8 @@ public class StreamsActivity extends Activity {
         if (!mChoose) {
             play(0);
             finish();
+            // Straight into the player's loading screen, which looks like this one.
+            overridePendingTransition(0, 0);
             return;
         }
         showList(streams, 0);
@@ -325,5 +327,6 @@ public class StreamsActivity extends Activity {
         mPlayback.streams = new ArrayList<>(mStreams.isEmpty() ? mPlayback.streams : mStreams);
         mPlayback.start = index;
         startActivity(new Intent(this, VideoPlayerActivity.class));
+        overridePendingTransition(0, 0);
     }
 }

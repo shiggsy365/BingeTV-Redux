@@ -31,8 +31,9 @@ import java.util.List;
  * The mode the activity had is put back by {@link #release()}.
  *
  * {@link #attachBeforePlay} changes mode before the video is seen: at once for a video that
- * declares its rate; otherwise it plays muted under a cover while it's measured, then goes
- * back to the start once the display has changed.
+ * declares its rate; otherwise it plays muted while it's measured, then goes back to the start
+ * once the display has changed. Its cover (showing as it's attached) stays until the video is
+ * playing in the mode it ends up in, so neither a first frame nor the change is seen.
  */
 @OptIn(markerClass = UnstableApi.class)
 final class FrameRateMatcher implements VideoFrameMetadataListener {
@@ -56,13 +57,22 @@ final class FrameRateMatcher implements VideoFrameMetadataListener {
     private Player.Listener mTracksListener;
     // The longest a mode change is waited for before playing anyway.
     private static final long SWITCH_TIMEOUT_MS = 4_000;
+    // After the display says it has changed mode, for the TV to show a picture again: it blanks
+    // while it does, and video revealed before then is seen for a moment, then lost.
+    private static final long SETTLE_MS = 1_500;
+    // Measured, then back to the start: shown anyway if it hasn't played by then.
+    private static final long REVEAL_TIMEOUT_MS = 10_000;
     private final Runnable mPlayAnyway = this::startPlaying;
-    // Measuring under the cover (attachBeforePlay, no declared rate): where to go back to.
+    // Over the video until it's playing (attachBeforePlay).
     private android.view.View mCover;
+    // Measuring under the cover (no declared rate): where to go back to.
     private boolean mCovered;
     private long mStartAt;
     private Player.Listener mRevealListener;
+    // A frame has been drawn since the video was last started or sent back to the start.
+    private boolean mFramed;
     private final Runnable mRevealAnyway = this::uncover;
+    private final Runnable mHideAnyway = this::hideCover;
     // Standard rates a measurement snaps to (timestamps are often rounded to the millisecond).
     private static final float[] RATES = {23.976f, 24f, 25f, 29.97f, 30f, 47.952f, 48f, 50f, 59.94f, 60f};
 
@@ -79,9 +89,10 @@ final class FrameRateMatcher implements VideoFrameMetadataListener {
     }
 
     /**
-     * Matching before playback: the caller prepares the player without playing, and this
-     * starts it once the display is in the mode the video's declared rate needs. Without a
-     * declared rate it starts straight away and the rate is measured as it plays.
+     * Matching before playback: the caller prepares the player without playing, with
+     * {@code cover} showing over it, and this starts it once the display is in the mode the
+     * video's declared rate needs. Without a declared rate it starts straight away, muted, and
+     * the rate is measured as it plays. The cover goes once the video plays where it'll stay.
      */
     static FrameRateMatcher attachBeforePlay(Activity activity, ExoPlayer player, android.view.View cover) {
         FrameRateMatcher matcher = attach(activity, player);
@@ -117,7 +128,6 @@ final class FrameRateMatcher implements VideoFrameMetadataListener {
             // Measured from the frames as it plays, out of sight and muted, then from the start.
             mCovered = true;
             mStartAt = mPlayer.getCurrentPosition();
-            mCover.setVisibility(android.view.View.VISIBLE);
             mPlayer.setVolume(0f);
             mMain.postDelayed(mRevealAnyway, 8_000);
             mPlayer.setPlayWhenReady(true);
@@ -158,9 +168,8 @@ final class FrameRateMatcher implements VideoFrameMetadataListener {
             @Override
             public void onDisplayChanged(int displayId) {
                 if (mActivity.getWindowManager().getDefaultDisplay().getMode().getModeId() == mWaitingFor) {
-                    // A moment for the TV to show the new mode's picture.
                     mMain.removeCallbacks(mSwitched);
-                    mMain.postDelayed(mSwitched, 300);
+                    mMain.postDelayed(mSwitched, SETTLE_MS);
                 }
             }
         };
@@ -177,24 +186,43 @@ final class FrameRateMatcher implements VideoFrameMetadataListener {
         if (then != null) then.run();
     };
 
-    /** Measured under the cover: back to the start, with the sound, once it's drawn again. */
+    /** Measured under the cover: back to the start, with the sound, shown once it plays again. */
     private void uncover() {
         mMain.removeCallbacks(mRevealAnyway);
         if (!mCovered || mActivity.isDestroyed()) return;
         mCovered = false;
         mPlayer.setVolume(1f);
+        mPlayer.seekTo(mStartAt);
+        revealWhenPlaying(false);
+        mMain.postDelayed(mHideAnyway, REVEAL_TIMEOUT_MS);
+    }
+
+    /**
+     * Takes the cover away once the video is playing and has drawn a frame since it was
+     * started ({@code framed}: it has, paused, as it was prepared) or sent back to the start.
+     */
+    private void revealWhenPlaying(boolean framed) {
+        if (mCover == null || mCover.getVisibility() != android.view.View.VISIBLE) return;
+        mFramed = framed;
+        if (mRevealListener != null) mPlayer.removeListener(mRevealListener);
         mRevealListener = new Player.Listener() {
             @Override
             public void onRenderedFirstFrame() {
-                hideCover();
+                mFramed = true;
+                if (mPlayer.isPlaying()) hideCover();
+            }
+
+            @Override
+            public void onIsPlayingChanged(boolean isPlaying) {
+                if (isPlaying && mFramed) hideCover();
             }
         };
         mPlayer.addListener(mRevealListener);
-        mPlayer.seekTo(mStartAt);
-        mMain.postDelayed(this::hideCover, 3_000);
+        if (mFramed && mPlayer.isPlaying()) hideCover();
     }
 
     private void hideCover() {
+        mMain.removeCallbacks(mHideAnyway);
         if (mRevealListener != null) mPlayer.removeListener(mRevealListener);
         mRevealListener = null;
         if (mCover != null) mCover.setVisibility(android.view.View.GONE);
@@ -204,7 +232,9 @@ final class FrameRateMatcher implements VideoFrameMetadataListener {
         mMain.removeCallbacks(mPlayAnyway);
         mMain.removeCallbacks(mSwitched);
         stopWaiting();
-        if (!mActivity.isDestroyed()) mPlayer.setPlayWhenReady(true);
+        if (mActivity.isDestroyed()) return;
+        mPlayer.setPlayWhenReady(true);
+        revealWhenPlaying(true);
     }
 
     private void stopWaiting() {
@@ -246,6 +276,7 @@ final class FrameRateMatcher implements VideoFrameMetadataListener {
         mMain.removeCallbacks(mPlayAnyway);
         mMain.removeCallbacks(mSwitched);
         mMain.removeCallbacks(mRevealAnyway);
+        mMain.removeCallbacks(mHideAnyway);
         stopWaiting();
         if (mRevealListener != null) mPlayer.removeListener(mRevealListener);
         if (mKind == null) mMain.post(() -> setMode(0));

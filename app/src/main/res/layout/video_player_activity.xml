@@ -18,20 +18,67 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Over the video while its frame rate is measured and the TV changes mode (see
-         FrameRateMatcher), so the start isn't seen twice. -->
+    <!-- Over the video until it's really playing, in the mode the TV changes to for it (see
+         FrameRateMatcher): the title's artwork and logo, as finding its streams showed them,
+         rather than a first frame, a spinner and the TV changing mode. -->
     <FrameLayout
-        android:id="@+id/frame_rate_cover"
+        android:id="@+id/loading"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#FF000000"
-        android:visibility="gone">
+        android:background="@color/guide_background">
 
-        <ProgressBar
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_gravity="center"
-            android:indeterminateTint="@color/guide_accent" />
+        <ImageView
+            android:id="@+id/loading_backdrop"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:scaleType="centerCrop" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#990E0F14" />
+
+        <!-- Laid out as streams_activity's searching, so nothing moves between them. -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/loading_logo"
+                android:layout_width="480dp"
+                android:layout_height="80dp"
+                android:importantForAccessibility="no"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:id="@+id/loading_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="?attr/fontMedium"
+                android:textColor="#FFFFFFFF"
+                android:textSize="32sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="60dp"
+                android:shadowColor="#CC000000"
+                android:shadowRadius="4"
+                android:text="Starting…"
+                android:textColor="#FFD0D0D0"
+                android:textSize="15sp" />
+
+            <ProgressBar
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="240dp"
+                android:layout_height="3dp"
+                android:layout_marginTop="12dp"
+                android:indeterminate="true"
+                android:indeterminateTint="@color/guide_accent" />
+        </LinearLayout>
     </FrameLayout>
 
     <include layout="@layout/osd" />
